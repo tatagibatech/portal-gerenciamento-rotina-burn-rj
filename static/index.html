@@ -52,16 +52,9 @@ header{
 }
 .hdr-left{display:flex;align-items:center;gap:16px}
 
-/* Logo Limppano inline SVG */
-.logo-limppano{height:36px;filter:brightness(0) invert(1)}
-
-/* M Colorido */
-.logo-m{
-  font-size:28px;font-weight:900;letter-spacing:-2px;
-  background:linear-gradient(90deg,var(--m-orange),var(--m-pink),var(--m-magenta));
-  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
-  background-clip:text;line-height:1
-}
+/* Logos reais */
+.logo-limppano{height:38px;object-fit:contain}
+.logo-m{height:34px;object-fit:contain}
 .hdr-sep{color:rgba(255,255,255,.3);font-size:20px;margin:0 4px}
 .hdr-title{
   color:#fff;font-size:15px;font-weight:700;letter-spacing:.2px;line-height:1.2
@@ -361,14 +354,8 @@ main{padding:20px 24px 40px;max-width:1600px;margin:0 auto}
 <!-- ══════════════════ HEADER ══════════════════ -->
 <header>
   <div class="hdr-left">
-    <!-- Logo Limppano SVG -->
-    <svg class="logo-limppano" viewBox="0 0 200 60" xmlns="http://www.w3.org/2000/svg">
-      <rect rx="12" ry="12" width="200" height="60" fill="#FFFFFF"/>
-      <text x="100" y="40" font-family="Arial Black,Arial" font-weight="900"
-            font-size="28" text-anchor="middle" fill="#0D2580">LIMPPANO</text>
-      <polygon points="18,14 22,10 26,14" fill="#0D2580"/>
-    </svg>
-    <span class="logo-m">mmm</span>
+    <img class="logo-limppano" src="/static/images/logo-limppano.png" alt="Limppano">
+    <img class="logo-m" src="/static/images/logo-m.png" alt="M Limppano">
     <span class="hdr-sep">│</span>
     <div>
       <div class="hdr-title">Gerenciamento de Rotina Logística BURN RJ</div>
