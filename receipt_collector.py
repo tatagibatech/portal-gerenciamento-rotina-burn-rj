@@ -411,6 +411,8 @@ class ReceiptCollector:
                 time.sleep(1)
 
     def iniciar(self):
+        if self._running and self._thread and self._thread.is_alive():
+            return  # já rodando — idempotente para suportar gunicorn fork
         self._running = True
         self._thread = threading.Thread(target=self._loop, daemon=True, name="receipt-collector")
         self._thread.start()

@@ -27,7 +27,11 @@ app = Flask(__name__, static_folder=STATIC_DIR, static_url_path="/static")
 CORS(app)
 
 collector = ReceiptCollector(intervalo=POLL_INTERVALO)
-collector.iniciar()  # inicia thread de polling (funciona tanto com gunicorn quanto __main__)
+
+
+@app.before_request
+def _garantir_collector():
+    collector.iniciar()  # idempotente — inicia thread no worker certo após gunicorn fork
 
 
 # ─────────────────────────────── Frontend ────────────────────────────────────
