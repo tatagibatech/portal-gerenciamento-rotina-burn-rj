@@ -42,18 +42,16 @@ DEPOSITOS = {
 }
 
 STATUS_MAP = {
-    "0": "pendente",
-    "1": "pendente",
-    "2": "pendente",
-    "3": "em_recebimento",
-    "4": "em_recebimento",
-    "5": "em_recebimento",
-    "6": "em_recebimento",
-    "7": "em_recebimento",
-    "8": "em_recebimento",
-    "9": "recebido",
-    "10": "recebido",
-    "11": "fechado",
+    "0":  "pendente",        # Novo
+    "2":  "pendente",        # Em trânsito
+    "3":  "em_recebimento",  # Pré-recebido
+    "4":  "pendente",        # Programado
+    "5":  "em_recebimento",  # No recebimento
+    "9":  "recebido",        # Recebido
+    "11": "fechado",         # Fechado
+    "15": "fechado",         # Verificado fechado
+    "20": "cancelado",       # Cancelado
+    "21": "recebido",        # RNERP
 }
 
 STATUS_LABEL = {
@@ -63,7 +61,7 @@ STATUS_LABEL = {
     "fechado":        "Fechado",
 }
 
-STATUS_ORDER = ["pendente", "em_recebimento", "recebido", "fechado"]
+STATUS_ORDER = ["pendente", "em_recebimento", "recebido", "fechado", "cancelado"]
 
 HOJE = date.today()
 
@@ -125,14 +123,13 @@ class WMSClient:
             return r.json()
         return None
 
-    def get_exports_asncompleted(self, limit=200):
-        r = self.get("exports", params={"type": "ASNCOMPLETED", "restrictrowsto": limit}, timeout=60)
+    def get_exports(self, tipo="ASNCOMPLETED", limit=200):
+        r = self.get("exports", params={"type": tipo, "restrictrowsto": limit}, timeout=60)
         if r.status_code == 200:
             return r.json() if isinstance(r.json(), list) else []
         return []
 
     def get_inventory_stage(self, loc, page_size=500):
-        """Retorna itens no local de stage - para descobrir receipts pendentes."""
         r = self.post(
             "inventorybalance/showinventorybalancelist",
             params={"recordcount": page_size, "loc": loc, "owner": "BURN"},
@@ -147,6 +144,24 @@ class WMSClient:
         if r.status_code == 200:
             return r.json()
         return {}
+
+    def list_receipts_by_date(self, adddate: str, page_size=500):
+        """Tenta listar receipts por data — fallback silencioso se endpoint não disponível."""
+        try:
+            r = self.get(
+                "receipts",
+                params={"storerkey": "BURN", "adddate": adddate, "recordcount": page_size},
+                timeout=60,
+            )
+            if r.status_code == 200:
+                data = r.json()
+                if isinstance(data, list):
+                    return data
+                if isinstance(data, dict) and data.get("receiptkey"):
+                    return [data]
+        except Exception:
+            pass
+        return []
 
 
 def _deposito_from_fromloc(fromloc: str) -> str | None:
@@ -167,43 +182,79 @@ def _deposito_from_receiptkey(receiptkey: str) -> str | None:
     return None
 
 
+def _qty_por_palete(pack: dict) -> float:
+    """Retorna quantidade de unidades por palete a partir do cadastro de embalagem."""
+    ti = float(pack.get("palletti") or 0)
+    hi = float(pack.get("pallethi") or 0)
+    if ti > 0 and hi > 0:
+        return ti * hi
+    qty = float(pack.get("qty") or 0)
+    if qty > 0:
+        return qty
+    return 0.0
+
+
+def _split_paletes(valor: float):
+    inteiros = int(valor)
+    fracao   = 1 if (valor - inteiros) > 0.01 else 0
+    return inteiros, fracao
+
+
 def _calcula_paletes(details: list, pack_cache: dict) -> dict:
     """
-    Retorna {'total_previsto': N, 'total_recebido': M,
-             'paletes_inteiros': P, 'paletes_fracao': F}.
-    Usa campo 'pallet' do detalhe se disponível; senão estima por palletti×pallethi.
+    Calcula paletes PREVISTOS e RECEBIDOS separadamente.
+    Fórmula: paletes = qty / qty_por_palete do cadastro de embalagem (pack).
     """
-    total_prev = 0.0
-    total_rec = 0.0
-    paletes_float = 0.0
+    total_prev   = 0.0
+    total_rec    = 0.0
+    pal_prev     = 0.0
+    pal_rec      = 0.0
 
     for d in details:
-        total_prev += float(d.get("qtyexpected") or 0)
-        total_rec  += float(d.get("qtyreceived") or 0)
-        pal = float(d.get("pallet") or 0)
-        if pal > 0:
-            paletes_float += pal
-        else:
-            # Estima via config de pack
-            packkey = d.get("packkey") or d.get("sku") or ""
-            pack = pack_cache.get(packkey, {})
-            ti = float(pack.get("palletti") or 0)
-            hi = float(pack.get("pallethi") or 0)
-            qty_por_palete = ti * hi if ti > 0 and hi > 0 else 0
-            qty = float(d.get("qtyreceived") or d.get("qtyexpected") or 0)
-            if qty_por_palete > 0:
-                paletes_float += qty / qty_por_palete
-            elif qty > 0:
-                paletes_float += 1  # fallback: 1 palete por linha com quantidade
+        qty_prev = float(d.get("qtyexpected") or 0)
+        qty_rec  = float(d.get("qtyreceived") or 0)
+        total_prev += qty_prev
+        total_rec  += qty_rec
 
-    inteiros = int(paletes_float)
-    fracao   = 1 if (paletes_float - inteiros) > 0.01 else 0
+        packkey = d.get("packkey") or d.get("sku") or ""
+        pack    = pack_cache.get(packkey, {})
+        qpp     = _qty_por_palete(pack)
+
+        if qpp > 0:
+            pal_prev += qty_prev / qpp
+            pal_rec  += qty_rec  / qpp
+        else:
+            # fallback: campo pallet direto do detalhe
+            pal_direto = float(d.get("pallet") or 0)
+            if pal_direto > 0:
+                pal_prev += pal_direto
+                pal_rec  += pal_direto * (qty_rec / qty_prev) if qty_prev > 0 else 0
+            else:
+                # último recurso: 1 palete por linha com quantidade
+                if qty_prev > 0:
+                    pal_prev += 1
+                if qty_rec > 0:
+                    pal_rec  += 1
+
+    prev_int, prev_frac = _split_paletes(pal_prev)
+    rec_int,  rec_frac  = _split_paletes(pal_rec)
+    diferenca = round(pal_prev - pal_rec, 2)
+
     return {
-        "total_previsto":   round(total_prev, 2),
-        "total_recebido":   round(total_rec, 2),
-        "paletes_inteiros": inteiros,
-        "paletes_fracao":   fracao,
-        "paletes_total":    inteiros + fracao,
+        "total_previsto":       round(total_prev, 2),
+        "total_recebido":       round(total_rec, 2),
+        # Previstos
+        "paletes_previstos":    round(pal_prev, 2),
+        "paletes_inteiros":     prev_int,
+        "paletes_fracao":       prev_frac,
+        "paletes_total":        prev_int + prev_frac,
+        # Recebidos
+        "paletes_recebidos":    round(pal_rec, 2),
+        "paletes_rec_inteiros": rec_int,
+        "paletes_rec_fracao":   rec_frac,
+        "paletes_rec_total":    rec_int + rec_frac,
+        # Diferença
+        "diferenca_paletes":    diferenca,
     }
 
 
@@ -232,40 +283,68 @@ def _receipt_to_dict(receipt: dict, pack_cache: dict) -> dict:
 
     paletes = _calcula_paletes(details, pack_cache)
 
+    # Regras de status derivado (prioridade: WMS status 11/15 → fechado; demais por qtd)
+    diferenca = paletes["diferenca_paletes"]
+    total_rec  = paletes["total_recebido"]
+    if status_raw in ("11", "15"):
+        status_derivado = "fechado"
+    elif status_raw == "20":
+        status_derivado = "cancelado"
+    elif status_raw in ("9", "21") and diferenca <= 0:
+        status_derivado = "recebido"
+    elif total_rec > 0 and diferenca > 0:
+        # Recebimento iniciado mas ainda falta quantidade → em recebimento
+        status_derivado = "em_recebimento"
+    elif status_raw in ("3", "5"):
+        status_derivado = "em_recebimento"
+    elif total_rec == 0:
+        status_derivado = "pendente"
+    else:
+        status_derivado = status
+
     linhas = []
     for det in details:
+        packkey_det = det.get("packkey") or det.get("sku") or ""
+        pack_det    = pack_cache.get(packkey_det, {})
+        qpp_det     = _qty_por_palete(pack_det)
+        qty_prev_det = float(det.get("qtyexpected") or 0)
+        qty_rec_det  = float(det.get("qtyreceived") or 0)
         linhas.append({
-            "sku":           det.get("sku") or "",
-            "linha":         det.get("receiptlinenumber") or "",
-            "qty_previsto":  float(det.get("qtyexpected") or 0),
-            "qty_recebido":  float(det.get("qtyreceived") or 0),
-            "uom":           det.get("uom") or "",
-            "pallet":        float(det.get("pallet") or 0),
-            "toloc":         det.get("toloc") or "",
-            "fromloc":       det.get("fromloc") or "",
-            "lot":           det.get("id") or "",
-            "lote_ref":      det.get("lottable01") or "",
-            "nf":            det.get("lottable02") or "",
-            "lote_forn":     det.get("lottable03") or "",
-            "vencimento":    (det.get("lottable05") or "")[:10],
-            "data_receb":    (det.get("datereceived") or "")[:10],
-            "status":        STATUS_MAP.get(str(det.get("status") or "0"), "pendente"),
-            "condcode":      det.get("conditioncode") or "",
+            "sku":              det.get("sku") or "",
+            "linha":            det.get("receiptlinenumber") or "",
+            "qty_previsto":     qty_prev_det,
+            "qty_recebido":     qty_rec_det,
+            "qty_por_palete":   round(qpp_det, 2),
+            "pal_previsto":     round(qty_prev_det / qpp_det, 2) if qpp_det > 0 else None,
+            "pal_recebido":     round(qty_rec_det  / qpp_det, 2) if qpp_det > 0 else None,
+            "pal_diferenca":    round((qty_prev_det - qty_rec_det) / qpp_det, 2) if qpp_det > 0 else None,
+            "uom":              det.get("uom") or "",
+            "packkey":          packkey_det,
+            "toloc":            det.get("toloc") or "",
+            "fromloc":          det.get("fromloc") or "",
+            "lote_ref":         det.get("lottable01") or "",
+            "nf":               det.get("lottable02") or "",
+            "lote_forn":        det.get("lottable03") or "",
+            "vencimento":       (det.get("lottable05") or "")[:10],
+            "data_receb":       (det.get("datereceived") or "")[:10],
+            "status":           STATUS_MAP.get(str(det.get("status") or "0"), "pendente"),
+            "condcode":         det.get("conditioncode") or "",
         })
 
     return {
-        "receiptkey":     receipt.get("receiptkey") or "",
-        "externkey":      receipt.get("externreceiptkey") or "",
-        "status_raw":     status_raw,
-        "status":         status,
-        "status_label":   STATUS_LABEL.get(status, status),
-        "deposito":       deposito,
-        "data_criacao":   add_dt,
+        "receiptkey":       receipt.get("receiptkey") or "",
+        "externkey":        receipt.get("externreceiptkey") or "",
+        "status_raw":       status_raw,
+        "status":           status_derivado,
+        "status_wms":       status,
+        "status_label":     STATUS_LABEL.get(status_derivado, status_derivado),
+        "deposito":         deposito,
+        "data_criacao":     add_dt,
         "data_recebimento": rec_dt,
         "data_fechamento":  close_dt,
-        "n_linhas":       len(details),
-        "paletes":        paletes,
-        "linhas":         linhas,
+        "n_linhas":         len(details),
+        "paletes":          paletes,
+        "linhas":           linhas,
     }
 
 
@@ -307,13 +386,31 @@ class ReceiptCollector:
     # ------------------------------------------------------------------ discovery
 
     def _discover_from_exports(self):
-        """Descobre receiptkeys via ASNCOMPLETED events."""
-        events = self._client.get_exports_asncompleted(limit=200)
+        """Descobre receiptkeys via exports (ASNCOMPLETED + ASN) e listagem por data."""
         keys = set()
-        for ev in events:
-            k = ev.get("key1") or ev.get("key2") or ""
-            if k:
-                keys.add(k.strip())
+
+        for tipo in ("ASNCOMPLETED", "ASN"):
+            try:
+                events = self._client.get_exports(tipo=tipo, limit=200)
+                for ev in events:
+                    k = ev.get("key1") or ev.get("key2") or ev.get("receiptkey") or ""
+                    if k:
+                        keys.add(k.strip())
+            except Exception as e:
+                log.warning(f"Exports {tipo}: {e}")
+
+        # Listagem por data (hoje e ontem) para capturar ASNs abertas
+        for delta in (0, 1):
+            dt = (date.today() - timedelta(days=delta)).isoformat()
+            try:
+                recs = self._client.list_receipts_by_date(dt)
+                for r in recs:
+                    k = r.get("receiptkey") or ""
+                    if k:
+                        keys.add(k.strip())
+            except Exception as e:
+                log.warning(f"list_receipts_by_date {dt}: {e}")
+
         return keys
 
     def _discover_from_stages(self):
