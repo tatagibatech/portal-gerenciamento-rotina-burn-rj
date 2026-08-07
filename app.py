@@ -110,6 +110,26 @@ def api_status():
     })
 
 
+@app.get("/api/config-check")
+def api_config_check():
+    """Diagnóstico de configuração — mostra prefixo das credenciais (não expõe valores completos)."""
+    from wms_config import CONFIG as C
+    def mask(v):
+        if not v:
+            return "(vazio)"
+        return v[:12] + "..." + f" [{len(v)} chars]"
+    return jsonify({
+        "tenant":    C.get("tenant", ""),
+        "token_url": C.get("token_url", ""),
+        "warehouse": C.get("warehouse", ""),
+        "owner":     C.get("owner", ""),
+        "ci":        mask(C.get("ci", "")),
+        "cs":        mask(C.get("cs", "")),
+        "saak":      mask(C.get("saak", "")),
+        "sask":      mask(C.get("sask", "")),
+    })
+
+
 # ─────────────────────────────── Startup ─────────────────────────────────────
 
 if __name__ == "__main__":
