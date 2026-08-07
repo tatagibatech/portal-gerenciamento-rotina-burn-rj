@@ -308,7 +308,7 @@ class ReceiptCollector:
 
     def _discover_from_exports(self):
         """Descobre receiptkeys via ASNCOMPLETED events."""
-        events = self._client.get_exports_asncompleted(limit=1000)
+        events = self._client.get_exports_asncompleted(limit=200)
         keys = set()
         for ev in events:
             k = ev.get("key1") or ev.get("key2") or ""
