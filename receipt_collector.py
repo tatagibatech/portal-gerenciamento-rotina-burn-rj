@@ -117,8 +117,16 @@ class WMSClient:
             r = requests.post(url, headers=self.headers, params=params, json=body or {}, verify=False, timeout=timeout)
         return r
 
-    def get_receipt(self, receiptkey):
-        r = self.get(f"receipts/{receiptkey}", params={"expand": "receiptdetails"}, timeout=45)
+    def get_asn(self, receiptkey):
+        """GET /advancedshipnotice/{receiptkey} — endpoint correto do WMS para ASNs."""
+        r = self.get(f"advancedshipnotice/{receiptkey}", params={"expand": "receiptdetails"}, timeout=45)
+        if r.status_code == 200:
+            return r.json()
+        return None
+
+    def get_asn_by_externkey(self, externkey):
+        """GET /advancedshipnotice/externreceiptkey/{externkey}"""
+        r = self.get(f"advancedshipnotice/externreceiptkey/{externkey}", params={"expand": "receiptdetails"}, timeout=45)
         if r.status_code == 200:
             return r.json()
         return None
@@ -467,7 +475,7 @@ class ReceiptCollector:
                 if not rk:
                     continue
                 try:
-                    receipt = self._client.get_receipt(rk)
+                    receipt = self._client.get_asn(rk)
                     if receipt:
                         # Buscar pack dos itens
                         for det in (receipt.get("receiptdetails") or []):
