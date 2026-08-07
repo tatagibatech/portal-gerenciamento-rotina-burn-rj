@@ -153,23 +153,51 @@ class WMSClient:
             return r.json()
         return {}
 
-    def list_receipts_by_date(self, adddate: str, page_size=500):
-        """Tenta listar receipts por data — fallback silencioso se endpoint não disponível."""
-        try:
-            r = self.get(
-                "receipts",
-                params={"storerkey": "BURN", "adddate": adddate, "recordcount": page_size},
-                timeout=60,
-            )
-            if r.status_code == 200:
-                data = r.json()
-                if isinstance(data, list):
-                    return data
-                if isinstance(data, dict) and data.get("receiptkey"):
-                    return [data]
-        except Exception:
-            pass
-        return []
+    def list_receipts_by_date(self, date_str: str, page_size=500):
+        """Lista receipts por adddate OU receiptdate — tenta ambos silenciosamente."""
+        found = {}
+        for param in ("receiptdate", "adddate", "scheddate"):
+            try:
+                r = self.get(
+                    "receipts",
+                    params={"storerkey": "BURN", param: date_str, "recordcount": page_size},
+                    timeout=60,
+                )
+                if r.status_code == 200:
+                    data = r.json()
+                    if isinstance(data, list):
+                        for rec in data:
+                            k = rec.get("receiptkey") or ""
+                            if k:
+                                found[k] = rec
+                    elif isinstance(data, dict) and data.get("receiptkey"):
+                        found[data["receiptkey"]] = data
+            except Exception:
+                pass
+        return list(found.values())
+
+    def list_asn_by_date(self, date_str: str, page_size=500):
+        """Lista ASNs abertas por data via endpoint advancedshipnotice."""
+        found = {}
+        for param in ("adddate", "receiptdate"):
+            try:
+                r = self.get(
+                    "advancedshipnotice",
+                    params={"storerkey": "BURN", param: date_str, "recordcount": page_size},
+                    timeout=60,
+                )
+                if r.status_code == 200:
+                    data = r.json()
+                    if isinstance(data, list):
+                        for rec in data:
+                            k = rec.get("receiptkey") or ""
+                            if k:
+                                found[k] = rec
+                    elif isinstance(data, dict) and data.get("receiptkey"):
+                        found[data["receiptkey"]] = data
+            except Exception:
+                pass
+        return list(found.values())
 
 
 def _deposito_from_loc(loc: str) -> str | None:
@@ -428,17 +456,23 @@ class ReceiptCollector:
             except Exception as e:
                 log.warning(f"Exports {tipo}: {e}")
 
-        # Listagem por data (hoje e ontem) para capturar ASNs abertas
-        for delta in (0, 1):
+        # Listagem por data: últimos 7 dias por receiptdate/adddate + ASN endpoint
+        for delta in range(7):
             dt = (date.today() - timedelta(days=delta)).isoformat()
             try:
-                recs = self._client.list_receipts_by_date(dt)
-                for r in recs:
-                    k = r.get("receiptkey") or ""
+                for rec in self._client.list_receipts_by_date(dt):
+                    k = rec.get("receiptkey") or ""
                     if k:
                         keys.add(k.strip())
             except Exception as e:
                 log.warning(f"list_receipts_by_date {dt}: {e}")
+            try:
+                for rec in self._client.list_asn_by_date(dt):
+                    k = rec.get("receiptkey") or ""
+                    if k:
+                        keys.add(k.strip())
+            except Exception as e:
+                log.warning(f"list_asn_by_date {dt}: {e}")
 
         return keys
 
@@ -549,6 +583,30 @@ class ReceiptCollector:
 
     def forcar_refresh(self):
         threading.Thread(target=self._refresh, daemon=True).start()
+
+    def fetch_and_store(self, receiptkey: str) -> dict | None:
+        """Busca uma ASN específica imediatamente e a adiciona ao estado."""
+        try:
+            receipt = self._client.get_asn(receiptkey)
+            if not receipt:
+                receipt = self._client.get_asn_by_externkey(receiptkey)
+            if not receipt:
+                return None
+            for det in (receipt.get("receiptdetails") or []):
+                pk = det.get("packkey") or ""
+                if pk:
+                    self._ensure_pack(pk)
+            r_dict = _receipt_to_dict(receipt, self._pack_cache)
+            rk = r_dict["receiptkey"] or receiptkey
+            with self._lock:
+                self._receipts[rk] = r_dict
+                self._known_keys.add(rk)
+            self._save_cache()
+            log.info(f"ASN {rk} buscada manualmente e indexada.")
+            return r_dict
+        except Exception as e:
+            log.error(f"Erro ao buscar ASN {receiptkey}: {e}")
+            return None
 
     # ------------------------------------------------------------------ state access
 

@@ -95,6 +95,18 @@ def api_refresh():
         return jsonify({"erro": str(e)}), 500
 
 
+@app.get("/api/fetch-asn/<receiptkey>")
+def api_fetch_asn(receiptkey):
+    """Busca e indexa uma ASN específica imediatamente pelo receiptkey."""
+    try:
+        rec = collector.fetch_and_store(receiptkey)
+        if rec:
+            return jsonify({"ok": True, "receipt": rec})
+        return jsonify({"ok": False, "msg": f"ASN {receiptkey} não encontrada no WMS."}), 404
+    except Exception as e:
+        return jsonify({"erro": str(e)}), 500
+
+
 @app.get("/api/depositos")
 def api_depositos():
     """Retorna lista de depósitos configurados."""
@@ -112,6 +124,37 @@ def api_status():
         "erro":                state["erro"],
         "server_time":         datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
     })
+
+
+@app.get("/api/debug-wms-list")
+def api_debug_wms_list():
+    """Testa endpoint /receipts e /advancedshipnotice com data de hoje e ontem."""
+    from wms_config import CONFIG as C
+    from receipt_collector import WMSClient
+    from datetime import date, timedelta
+    client = WMSClient()
+    resultado = {}
+    for delta in (0, 1):
+        dt = (date.today() - timedelta(days=delta)).isoformat()
+        resultado[dt] = {}
+        for param in ("receiptdate", "adddate"):
+            try:
+                r = client.get("receipts", params={"storerkey": "BURN", param: dt, "recordcount": 20}, timeout=30)
+                resultado[dt][f"receipts_{param}"] = {
+                    "status_code": r.status_code,
+                    "keys": [x.get("receiptkey") for x in (r.json() if isinstance(r.json(), list) else [])][:10] if r.status_code == 200 else r.text[:300],
+                }
+            except Exception as e:
+                resultado[dt][f"receipts_{param}"] = {"erro": str(e)}
+        try:
+            r = client.get("advancedshipnotice", params={"storerkey": "BURN", "adddate": dt, "recordcount": 20}, timeout=30)
+            resultado[dt]["asn_adddate"] = {
+                "status_code": r.status_code,
+                "keys": [x.get("receiptkey") for x in (r.json() if isinstance(r.json(), list) else [])][:10] if r.status_code == 200 else r.text[:300],
+            }
+        except Exception as e:
+            resultado[dt]["asn_adddate"] = {"erro": str(e)}
+    return jsonify(resultado)
 
 
 @app.get("/api/debug-receipt")
