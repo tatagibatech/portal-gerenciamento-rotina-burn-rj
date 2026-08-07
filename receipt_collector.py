@@ -224,7 +224,7 @@ def _calcula_paletes(details: list, pack_cache: dict) -> dict:
         total_prev += qty_prev
         total_rec  += qty_rec
 
-        packkey = d.get("packkey") or d.get("sku") or ""
+        packkey = d.get("packkey") or ""
         pack    = pack_cache.get(packkey, {})
         qpp     = _qty_por_palete(pack)
 
@@ -477,9 +477,9 @@ class ReceiptCollector:
                 try:
                     receipt = self._client.get_asn(rk)
                     if receipt:
-                        # Buscar pack dos itens
+                        # Buscar pack de cada linha via /{warehouse}/packs/{packkey}
                         for det in (receipt.get("receiptdetails") or []):
-                            pk = det.get("packkey") or det.get("sku") or ""
+                            pk = det.get("packkey") or ""
                             if pk:
                                 self._ensure_pack(pk)
 
