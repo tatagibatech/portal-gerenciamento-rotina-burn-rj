@@ -114,6 +114,43 @@ def api_status():
     })
 
 
+@app.get("/api/debug-receipt")
+def api_debug_receipt():
+    """Diagnóstico: campos chave de até 5 receipts — ajuda a identificar deposito/fromloc/toloc."""
+    state = collector.get_state()
+    receipts = state["receipts"]
+    amostra = []
+    for rk, rec in list(receipts.items())[:5]:
+        linhas = rec.get("linhas") or []
+        linhas_info = [
+            {
+                "fromloc":      l.get("fromloc"),
+                "toloc":        l.get("toloc"),
+                "packkey":      l.get("packkey"),
+                "qty_por_palete": l.get("qty_por_palete"),
+                "qty_previsto": l.get("qty_previsto"),
+                "qty_recebido": l.get("qty_recebido"),
+            }
+            for l in linhas[:3]
+        ]
+        amostra.append({
+            "receiptkey":       rk,
+            "externkey":        rec.get("externkey"),
+            "deposito":         rec.get("deposito"),
+            "supplier_code":    rec.get("supplier_code"),
+            "status":           rec.get("status"),
+            "status_wms":       rec.get("status_wms"),
+            "status_raw":       rec.get("status_raw"),
+            "data_criacao":     rec.get("data_criacao"),
+            "data_recebimento": rec.get("data_recebimento"),
+            "data_fechamento":  rec.get("data_fechamento"),
+            "n_linhas":         rec.get("n_linhas"),
+            "paletes_total":    rec["paletes"]["paletes_total"] if rec.get("paletes") else None,
+            "linhas":           linhas_info,
+        })
+    return jsonify(amostra)
+
+
 @app.get("/api/config-check")
 def api_config_check():
     """Diagnóstico de configuração — mostra prefixo das credenciais (não expõe valores completos)."""

@@ -172,12 +172,12 @@ class WMSClient:
         return []
 
 
-def _deposito_from_fromloc(fromloc: str) -> str | None:
-    """Extrai número do depósito do local de origem (ex: STG.PA.308.001 → '308')."""
-    if not fromloc:
+def _deposito_from_loc(loc: str) -> str | None:
+    """Extrai número do depósito de qualquer campo de localização (ex: STG.PA.308.001 → '308')."""
+    if not loc:
         return None
     for dep in DEPOSITOS:
-        if dep in fromloc:
+        if dep in loc:
             return dep
     return None
 
@@ -232,17 +232,11 @@ def _calcula_paletes(details: list, pack_cache: dict) -> dict:
             pal_prev += qty_prev / qpp
             pal_rec  += qty_rec  / qpp
         else:
-            # fallback: campo pallet direto do detalhe
-            pal_direto = float(d.get("pallet") or 0)
-            if pal_direto > 0:
-                pal_prev += pal_direto
-                pal_rec  += pal_direto * (qty_rec / qty_prev) if qty_prev > 0 else 0
-            else:
-                # último recurso: 1 palete por linha com quantidade
-                if qty_prev > 0:
-                    pal_prev += 1
-                if qty_rec > 0:
-                    pal_rec  += 1
+            # pack não configurado — estima 1 palete por linha com quantidade
+            if qty_prev > 0:
+                pal_prev += 1
+            if qty_rec > 0:
+                pal_rec  += 1
 
     prev_int, prev_frac = _split_paletes(pal_prev)
     rec_int,  rec_frac  = _split_paletes(pal_rec)
@@ -272,18 +266,39 @@ def _receipt_to_dict(receipt: dict, pack_cache: dict) -> dict:
     status_raw = str(receipt.get("status") or "0")
     status = STATUS_MAP.get(status_raw, "pendente")
 
-    # Identificar depósito pelo fromloc dos detalhes
+    # Identificar depósito — SupplierCode é o campo primário no WMS
     deposito = None
-    for d in details:
-        dep = _deposito_from_fromloc(d.get("fromloc") or "")
-        if dep:
-            deposito = dep
-            break
+    for field in ("SupplierCode", "supplierCode", "suppliercode", "supplierKey", "supplierkey"):
+        val = str(receipt.get(field) or "").strip()
+        if val:
+            dep = _deposito_from_loc(val)
+            if dep:
+                deposito = dep
+                break
+            # SupplierCode pode ser exatamente o número (ex: "308", "309")
+            if val in DEPOSITOS:
+                deposito = val
+                break
+    if not deposito:
+        # Fallback: toloc → fromloc das linhas
+        for d in details:
+            dep = _deposito_from_loc(d.get("toloc") or "")
+            if not dep:
+                dep = _deposito_from_loc(d.get("fromloc") or "")
+            if dep:
+                deposito = dep
+                break
+    if not deposito:
+        # Fallback: outros campos do cabeçalho
+        for field in ("referencelocation", "susr1", "susr2", "susr3", "susr4", "susr5"):
+            dep = _deposito_from_loc(str(receipt.get(field) or ""))
+            if dep:
+                deposito = dep
+                break
     if not deposito:
         deposito = _deposito_from_receiptkey(receipt.get("receiptkey") or "")
     if not deposito:
-        dep_ref = _deposito_from_fromloc(receipt.get("referencelocation") or "")
-        deposito = dep_ref
+        deposito = _deposito_from_receiptkey(receipt.get("externreceiptkey") or "")
 
     add_dt  = (receipt.get("adddate") or "")[:10]
     close_dt = (receipt.get("closeddate") or "")[:10]
@@ -339,9 +354,15 @@ def _receipt_to_dict(receipt: dict, pack_cache: dict) -> dict:
             "condcode":         det.get("conditioncode") or "",
         })
 
+    supplier_code = (
+        receipt.get("SupplierCode") or receipt.get("supplierCode") or
+        receipt.get("suppliercode") or receipt.get("supplierKey") or ""
+    )
+
     return {
         "receiptkey":       receipt.get("receiptkey") or "",
         "externkey":        receipt.get("externreceiptkey") or "",
+        "supplier_code":    supplier_code,
         "status_raw":       status_raw,
         "status":           status_derivado,
         "status_wms":       status,
