@@ -443,12 +443,54 @@ class ReceiptCollector:
     # ------------------------------------------------------------------ discovery
 
     def _discover_from_exports(self):
-        """Descobre receiptkeys via exports (ASNCOMPLETED + ASN) e listagem por data."""
+        """Descobre receiptkeys via listagem direta + exports."""
         keys = set()
 
+        # 1. Listagem direta — sem filtro de data, pega os mais recentes (recordcount alto)
+        for path in ("advancedshipnotice", "receipts"):
+            for params in (
+                {"storerkey": "BURN", "recordcount": 500},
+                {"storerkey": "BURN", "status": "9", "recordcount": 200},   # Recebido
+                {"storerkey": "BURN", "status": "5", "recordcount": 200},   # No recebimento
+                {"storerkey": "BURN", "status": "3", "recordcount": 200},   # Pré-recebido
+                {"storerkey": "BURN", "status": "4", "recordcount": 200},   # Programado
+            ):
+                try:
+                    r = self._client.get(path, params=params, timeout=60)
+                    if r.status_code == 200:
+                        data = r.json()
+                        if isinstance(data, list):
+                            for rec in data:
+                                k = rec.get("receiptkey") or ""
+                                if k:
+                                    keys.add(k.strip())
+                        elif isinstance(data, dict) and data.get("receiptkey"):
+                            keys.add(data["receiptkey"].strip())
+                except Exception as e:
+                    log.debug(f"Listagem {path} {params}: {e}")
+
+        # 2. POST showreceiptlist / showadvancedshipnoticelist
+        for path in ("receipts/showreceiptlist", "advancedshipnotice/showadvancedshipnoticelist"):
+            for body in (
+                {"storerkey": "BURN", "recordcount": 500},
+                {"storerkey": "BURN", "status": "9", "recordcount": 200},
+            ):
+                try:
+                    r = self._client.post(path, body=body, timeout=60)
+                    if r.status_code == 200:
+                        data = r.json()
+                        if isinstance(data, list):
+                            for rec in data:
+                                k = rec.get("receiptkey") or ""
+                                if k:
+                                    keys.add(k.strip())
+                except Exception as e:
+                    log.debug(f"POST {path}: {e}")
+
+        # 3. Exports ASNCOMPLETED + ASN (fallback — podem trazer dados antigos)
         for tipo in ("ASNCOMPLETED", "ASN"):
             try:
-                events = self._client.get_exports(tipo=tipo, limit=200)
+                events = self._client.get_exports(tipo=tipo, limit=500)
                 for ev in events:
                     k = ev.get("key1") or ev.get("key2") or ev.get("receiptkey") or ""
                     if k:
@@ -456,7 +498,7 @@ class ReceiptCollector:
             except Exception as e:
                 log.warning(f"Exports {tipo}: {e}")
 
-        # Listagem por data: últimos 7 dias por receiptdate/adddate + ASN endpoint
+        # 4. Listagem por data — últimos 7 dias (silencioso se não suportado)
         for delta in range(7):
             dt = (date.today() - timedelta(days=delta)).isoformat()
             try:
@@ -464,16 +506,17 @@ class ReceiptCollector:
                     k = rec.get("receiptkey") or ""
                     if k:
                         keys.add(k.strip())
-            except Exception as e:
-                log.warning(f"list_receipts_by_date {dt}: {e}")
+            except Exception:
+                pass
             try:
                 for rec in self._client.list_asn_by_date(dt):
                     k = rec.get("receiptkey") or ""
                     if k:
                         keys.add(k.strip())
-            except Exception as e:
-                log.warning(f"list_asn_by_date {dt}: {e}")
+            except Exception:
+                pass
 
+        log.info(f"Descoberta: {len(keys)} chaves encontradas.")
         return keys
 
     def _discover_from_stages(self):
