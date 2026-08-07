@@ -1,0 +1,1020 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Gerenciamento de Rotina Logística — BURN RJ</title>
+<style>
+/* ═══════════════════════════════════════════════════════════
+   VARIÁVEIS & RESET
+═══════════════════════════════════════════════════════════ */
+:root {
+  /* Azul Limppano */
+  --blue-dark:    #0D2580;
+  --blue:         #1437A0;
+  --blue-mid:     #1A4DC0;
+  --blue-light:   #2563EB;
+
+  /* Gradiente M Colorido */
+  --m-orange:  #E8723A;
+  --m-salmon:  #D4546C;
+  --m-pink:    #CF3E7A;
+  --m-magenta: #D4007A;
+
+  /* Status */
+  --pendente:       #F59E0B;
+  --pendente-bg:    rgba(245,158,11,.12);
+  --em-rec:         #3B82F6;
+  --em-rec-bg:      rgba(59,130,246,.12);
+  --recebido:       #22C55E;
+  --recebido-bg:    rgba(34,197,94,.12);
+  --fechado:        #6B7280;
+  --fechado-bg:     rgba(107,114,128,.12);
+
+  /* Neutros */
+  --bg:        #F0F4FF;
+  --surface:   #FFFFFF;
+  --border:    #C7D2FE;
+  --text:      #1E1B4B;
+  --muted:     #6B7280;
+  --shadow:    0 1px 4px rgba(20,55,160,.10), 0 4px 16px rgba(20,55,160,.06);
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);
+  color:var(--text);font-size:13px;min-height:100vh}
+
+/* ── HEADER ── */
+header{
+  background:linear-gradient(135deg,var(--blue-dark) 0%,var(--blue-mid) 100%);
+  padding:0 24px;display:flex;align-items:center;justify-content:space-between;
+  height:60px;box-shadow:0 2px 8px rgba(0,0,0,.25);position:sticky;top:0;z-index:100
+}
+.hdr-left{display:flex;align-items:center;gap:16px}
+
+/* Logo Limppano inline SVG */
+.logo-limppano{height:36px;filter:brightness(0) invert(1)}
+
+/* M Colorido */
+.logo-m{
+  font-size:28px;font-weight:900;letter-spacing:-2px;
+  background:linear-gradient(90deg,var(--m-orange),var(--m-pink),var(--m-magenta));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  background-clip:text;line-height:1
+}
+.hdr-sep{color:rgba(255,255,255,.3);font-size:20px;margin:0 4px}
+.hdr-title{
+  color:#fff;font-size:15px;font-weight:700;letter-spacing:.2px;line-height:1.2
+}
+.hdr-sub{color:rgba(255,255,255,.65);font-size:11px;margin-top:1px}
+
+.hdr-right{display:flex;align-items:center;gap:16px}
+.hdr-clock{color:rgba(255,255,255,.85);font-size:13px;font-family:monospace}
+.hdr-live{display:flex;align-items:center;gap:6px;font-size:12px;color:rgba(255,255,255,.7)}
+.live-dot{width:8px;height:8px;border-radius:50%;background:#4ADE80;
+  box-shadow:0 0 6px #4ADE80;animation:pulse-dot 1.5s ease-in-out infinite}
+@keyframes pulse-dot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.6;transform:scale(.85)}}
+
+/* ── NAV ── */
+nav{
+  background:var(--blue);display:flex;padding:0 24px;gap:2px;
+  border-bottom:2px solid rgba(255,255,255,.1)
+}
+.nav-item{
+  padding:10px 20px;color:rgba(255,255,255,.7);font-size:12px;font-weight:600;
+  cursor:pointer;border-bottom:3px solid transparent;transition:all .15s;
+  text-transform:uppercase;letter-spacing:.5px;user-select:none
+}
+.nav-item:hover{color:#fff;background:rgba(255,255,255,.08)}
+.nav-item.active{color:#fff;border-bottom-color:var(--m-magenta)}
+.nav-item.disabled{opacity:.45;cursor:not-allowed}
+
+/* ── CONTEÚDO ── */
+main{padding:20px 24px 40px;max-width:1600px;margin:0 auto}
+
+/* ── TOOLBAR DO PAINEL ── */
+.panel-header{
+  display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:16px;flex-wrap:wrap;gap:10px
+}
+.panel-title{font-size:18px;font-weight:700;color:var(--blue-dark);display:flex;align-items:center;gap:8px}
+.panel-title span.tag{
+  background:linear-gradient(90deg,var(--m-pink),var(--m-magenta));
+  color:#fff;font-size:10px;padding:2px 8px;border-radius:10px;font-weight:700;letter-spacing:.5px
+}
+.panel-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.btn{
+  display:inline-flex;align-items:center;gap:5px;padding:7px 14px;border-radius:6px;
+  font-size:12px;font-weight:600;cursor:pointer;border:1px solid;transition:all .15s;white-space:nowrap
+}
+.btn-primary{background:var(--blue);color:#fff;border-color:var(--blue)}
+.btn-primary:hover{background:var(--blue-dark)}
+.btn-outline{background:#fff;color:var(--blue);border-color:var(--blue-light)}
+.btn-outline:hover{background:var(--bg)}
+.btn-sm{padding:5px 10px;font-size:11px}
+
+/* filtro de data */
+.date-filter{display:flex;align-items:center;gap:8px}
+.date-filter label{font-size:11px;color:var(--muted);font-weight:600}
+.date-filter input[type=date]{
+  border:1px solid var(--border);border-radius:6px;padding:5px 10px;
+  font-size:12px;color:var(--text);background:#fff;outline:none
+}
+.date-filter input[type=date]:focus{border-color:var(--blue)}
+
+/* ── SUMMARY CARDS ── */
+.summary-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:20px}
+.scard{
+  background:var(--surface);border-radius:10px;padding:14px 18px;
+  box-shadow:var(--shadow);border-left:4px solid transparent;
+  display:flex;flex-direction:column;gap:4px
+}
+.scard-num{font-size:30px;font-weight:800;line-height:1}
+.scard-lbl{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+.scard-sub{font-size:11px;color:var(--muted)}
+.scard.pendente{border-left-color:var(--pendente)}
+.scard.pendente .scard-num{color:var(--pendente)}
+.scard.em_recebimento{border-left-color:var(--em-rec)}
+.scard.em_recebimento .scard-num{color:var(--em-rec)}
+.scard.recebido{border-left-color:var(--recebido)}
+.scard.recebido .scard-num{color:var(--recebido)}
+.scard.fechado{border-left-color:var(--fechado)}
+.scard.fechado .scard-num{color:var(--fechado)}
+.scard.paletes{border-left-color:var(--blue-light)}
+.scard.paletes .scard-num{color:var(--blue-light)}
+
+/* ── SEÇÃO FARÓIS ── */
+.section-title{
+  font-size:13px;font-weight:700;color:var(--blue-dark);text-transform:uppercase;
+  letter-spacing:.8px;margin-bottom:12px;display:flex;align-items:center;gap:8px
+}
+.section-title::after{content:'';flex:1;height:1px;background:var(--border)}
+
+/* Grid de faróis por depósito */
+.farol-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(280px,1fr));
+  gap:14px;margin-bottom:24px
+}
+
+/* Card de farol por depósito */
+.dep-card{
+  background:var(--surface);border-radius:12px;box-shadow:var(--shadow);
+  overflow:hidden;transition:box-shadow .15s
+}
+.dep-card:hover{box-shadow:0 4px 20px rgba(20,55,160,.15)}
+.dep-header{
+  background:linear-gradient(135deg,var(--blue-dark),var(--blue-mid));
+  padding:10px 14px;display:flex;align-items:center;justify-content:space-between
+}
+.dep-name{color:#fff;font-weight:700;font-size:13px}
+.dep-zona{color:rgba(255,255,255,.6);font-size:10px}
+.dep-paletes-badge{
+  background:rgba(255,255,255,.2);color:#fff;font-size:11px;
+  padding:2px 8px;border-radius:10px;font-weight:600
+}
+
+/* Status boxes dentro do card */
+.dep-status-grid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--border)}
+.status-box{
+  background:var(--surface);padding:12px 14px;cursor:pointer;
+  transition:background .12s;display:flex;flex-direction:column;gap:4px;
+  position:relative
+}
+.status-box:hover{background:var(--bg);filter:brightness(.97)}
+.status-box::after{
+  content:'↗';position:absolute;top:6px;right:8px;
+  font-size:10px;color:var(--muted);opacity:0;transition:opacity .12s
+}
+.status-box:hover::after{opacity:1}
+
+.sb-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px}
+.sb-count{font-size:22px;font-weight:800;line-height:1}
+.sb-pct{font-size:10px;font-weight:600}
+.sb-paletes{font-size:10px;color:var(--muted)}
+
+.sb-pendente   .sb-label{color:var(--pendente)}
+.sb-pendente   .sb-count{color:var(--pendente)}
+.sb-em-rec     .sb-label{color:var(--em-rec)}
+.sb-em-rec     .sb-count{color:var(--em-rec)}
+.sb-recebido   .sb-label{color:var(--recebido)}
+.sb-recebido   .sb-count{color:var(--recebido)}
+.sb-fechado    .sb-label{color:var(--fechado)}
+.sb-fechado    .sb-count{color:var(--fechado)}
+
+.no-data-card{
+  display:flex;align-items:center;justify-content:center;
+  min-height:80px;color:var(--muted);font-size:12px;
+  grid-column:1/-1;background:var(--surface);border-radius:12px;
+  box-shadow:var(--shadow)
+}
+
+/* ── BACKLOG ── */
+.backlog-section{margin-top:24px}
+.backlog-table-wrap{background:var(--surface);border-radius:10px;box-shadow:var(--shadow);overflow:hidden}
+.backlog-table{width:100%;border-collapse:collapse}
+.backlog-table th{
+  padding:10px 14px;text-align:left;font-size:11px;font-weight:700;
+  color:var(--muted);text-transform:uppercase;letter-spacing:.5px;
+  background:#F8FAFF;border-bottom:1px solid var(--border)
+}
+.backlog-table td{
+  padding:9px 14px;border-bottom:1px solid #EEF2FF;font-size:12px;vertical-align:middle
+}
+.backlog-table tbody tr:last-child td{border-bottom:none}
+.backlog-table tbody tr:hover td{background:#F8FAFF}
+.bl-dep{font-weight:700;color:var(--blue-dark)}
+.count-badge{
+  display:inline-flex;align-items:center;padding:2px 8px;
+  border-radius:10px;font-size:11px;font-weight:700;min-width:32px;justify-content:center
+}
+.cb-pend{background:var(--pendente-bg);color:var(--pendente)}
+.cb-emrec{background:var(--em-rec-bg);color:var(--em-rec)}
+.cb-rec{background:var(--recebido-bg);color:var(--recebido)}
+.cb-fec{background:var(--fechado-bg);color:var(--fechado)}
+.cb-zero{background:#F3F4F6;color:var(--muted)}
+
+/* ── MODAL DETALHE ── */
+.modal-overlay{
+  position:fixed;inset:0;background:rgba(13,37,128,.55);backdrop-filter:blur(3px);
+  z-index:200;display:flex;align-items:flex-start;justify-content:center;
+  padding:20px;overflow-y:auto
+}
+.modal-overlay.hidden{display:none}
+.modal{
+  background:#fff;border-radius:14px;width:100%;max-width:1100px;
+  box-shadow:0 8px 40px rgba(13,37,128,.25);animation:slide-in .2s ease
+}
+@keyframes slide-in{from{opacity:0;transform:translateY(-16px)}to{opacity:1;transform:translateY(0)}}
+.modal-header{
+  background:linear-gradient(135deg,var(--blue-dark),var(--blue-mid));
+  padding:16px 20px;border-radius:14px 14px 0 0;
+  display:flex;align-items:center;justify-content:space-between
+}
+.modal-title{color:#fff;font-size:15px;font-weight:700}
+.modal-sub{color:rgba(255,255,255,.7);font-size:11px;margin-top:2px}
+.modal-close{
+  background:rgba(255,255,255,.15);border:none;color:#fff;width:28px;height:28px;
+  border-radius:50%;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;
+  transition:background .12s
+}
+.modal-close:hover{background:rgba(255,255,255,.3)}
+.modal-body{padding:16px 20px}
+
+/* filtros do modal */
+.modal-filters{
+  display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;
+  background:#F8FAFF;border:1px solid var(--border);border-radius:8px;
+  padding:12px 14px;margin-bottom:14px
+}
+.modal-filters label{display:flex;flex-direction:column;gap:3px;font-size:10px;
+  font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+.modal-filters input,.modal-filters select{
+  border:1px solid var(--border);border-radius:5px;padding:5px 8px;
+  font-size:12px;color:var(--text);background:#fff;outline:none;min-width:130px
+}
+.modal-filters input:focus,.modal-filters select:focus{border-color:var(--blue)}
+.modal-export-btns{display:flex;gap:6px;margin-left:auto}
+
+/* tabela de detalhe */
+.detail-table-wrap{overflow-x:auto;border-radius:8px;border:1px solid var(--border)}
+.detail-table{width:100%;border-collapse:collapse;white-space:nowrap}
+.detail-table th{
+  padding:9px 12px;text-align:left;font-size:11px;font-weight:700;
+  color:var(--muted);text-transform:uppercase;letter-spacing:.4px;
+  background:#F8FAFF;border-bottom:1px solid var(--border);
+  position:sticky;top:0;z-index:1
+}
+.detail-table td{padding:8px 12px;border-bottom:1px solid #EEF2FF;font-size:12px;vertical-align:middle}
+.detail-table tbody tr:hover td{background:#F8FAFF}
+.detail-table tbody tr:last-child td{border-bottom:none}
+.td-sku{font-family:monospace;font-weight:600;color:var(--blue)}
+.td-qty{text-align:right;font-family:monospace}
+.td-palet{text-align:center}
+.badge-int{
+  display:inline-flex;align-items:center;gap:3px;
+  background:#DBEAFE;color:#1D4ED8;padding:2px 7px;border-radius:8px;font-size:10px;font-weight:700
+}
+.badge-fra{
+  display:inline-flex;align-items:center;gap:3px;
+  background:#FEF3C7;color:#92400E;padding:2px 7px;border-radius:8px;font-size:10px;font-weight:700
+}
+.badge-zero{background:#F3F4F6;color:var(--muted);padding:2px 7px;border-radius:8px;font-size:10px}
+
+/* Paginação */
+.pagination{display:flex;align-items:center;justify-content:space-between;
+  margin-top:12px;font-size:12px;color:var(--muted)}
+.pag-btns{display:flex;gap:4px}
+.pag-btn{
+  padding:4px 10px;border:1px solid var(--border);border-radius:5px;cursor:pointer;
+  background:#fff;font-size:11px;transition:all .12s
+}
+.pag-btn:hover:not(.disabled){background:var(--blue);color:#fff;border-color:var(--blue)}
+.pag-btn.active{background:var(--blue);color:#fff;border-color:var(--blue)}
+.pag-btn.disabled{opacity:.4;cursor:not-allowed}
+
+/* ── LOADING ── */
+.loading-overlay{
+  position:fixed;inset:0;background:rgba(255,255,255,.7);backdrop-filter:blur(2px);
+  z-index:300;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px
+}
+.loading-overlay.hidden{display:none}
+.spinner{
+  width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--blue);
+  border-radius:50%;animation:spin .8s linear infinite
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-text{color:var(--blue-dark);font-weight:600;font-size:14px}
+
+/* ── TOAST ── */
+.toast{
+  position:fixed;bottom:24px;right:24px;background:var(--blue-dark);color:#fff;
+  padding:10px 18px;border-radius:8px;font-size:12px;font-weight:600;
+  box-shadow:0 4px 16px rgba(0,0,0,.2);z-index:400;transition:opacity .3s;
+  display:flex;align-items:center;gap:8px
+}
+.toast.hidden{opacity:0;pointer-events:none}
+.toast.success{background:#16A34A}
+.toast.error{background:#DC2626}
+
+/* ── EMPTY STATE ── */
+.empty-state{
+  text-align:center;padding:48px 24px;color:var(--muted)
+}
+.empty-state .icon{font-size:48px;margin-bottom:12px}
+.empty-state h3{font-size:16px;color:var(--text);margin-bottom:6px}
+
+/* ── RESPONSIVO ── */
+@media(max-width:768px){
+  .farol-grid{grid-template-columns:1fr 1fr}
+  .summary-cards{grid-template-columns:repeat(2,1fr)}
+  .hdr-title{font-size:12px}
+}
+@media(max-width:480px){
+  .farol-grid{grid-template-columns:1fr}
+  main{padding:12px}
+}
+</style>
+</head>
+<body>
+
+<!-- ══════════════════ HEADER ══════════════════ -->
+<header>
+  <div class="hdr-left">
+    <!-- Logo Limppano SVG -->
+    <svg class="logo-limppano" viewBox="0 0 200 60" xmlns="http://www.w3.org/2000/svg">
+      <rect rx="12" ry="12" width="200" height="60" fill="#FFFFFF"/>
+      <text x="100" y="40" font-family="Arial Black,Arial" font-weight="900"
+            font-size="28" text-anchor="middle" fill="#0D2580">LIMPPANO</text>
+      <polygon points="18,14 22,10 26,14" fill="#0D2580"/>
+    </svg>
+    <span class="logo-m">mmm</span>
+    <span class="hdr-sep">│</span>
+    <div>
+      <div class="hdr-title">Gerenciamento de Rotina Logística BURN RJ</div>
+      <div class="hdr-sub">Painel Operacional — Produto Acabado</div>
+    </div>
+  </div>
+  <div class="hdr-right">
+    <div class="hdr-live">
+      <span class="live-dot" id="liveDot"></span>
+      <span id="liveLabel">Conectado</span>
+    </div>
+    <div class="hdr-clock" id="clock">--:--:--</div>
+  </div>
+</header>
+
+<!-- ══════════════════ NAV ══════════════════ -->
+<nav>
+  <div class="nav-item active" onclick="setNav('recebimento')">Recebimento PA</div>
+  <div class="nav-item disabled">Expedição</div>
+  <div class="nav-item disabled">Inventário</div>
+  <div class="nav-item disabled">Relatórios</div>
+</nav>
+
+<!-- ══════════════════ MAIN ══════════════════ -->
+<main>
+
+  <!-- toolbar -->
+  <div class="panel-header">
+    <div class="panel-title">
+      Farol de Recebimento — Produto Acabado
+      <span class="tag">LIVE</span>
+    </div>
+    <div class="panel-actions">
+      <div class="date-filter">
+        <label>Data:</label>
+        <input type="date" id="filterDate" onchange="carregarFarol()">
+      </div>
+      <button class="btn btn-outline btn-sm" onclick="carregarFarol()">↺ Atualizar</button>
+      <button class="btn btn-primary btn-sm" onclick="forcarRefresh()">⚡ Forçar Refresh</button>
+    </div>
+  </div>
+
+  <!-- última atualização -->
+  <div style="font-size:11px;color:var(--muted);margin-bottom:14px">
+    Última atualização: <strong id="ultimaAtualizacao">—</strong>
+    &nbsp;|&nbsp; Próxima em <strong id="countdownLabel">30s</strong>
+    &nbsp;|&nbsp; <span id="totalReceipts">—</span> recebimentos carregados
+  </div>
+
+  <!-- SUMMARY CARDS -->
+  <div class="summary-cards" id="summaryCards">
+    <div class="scard pendente"><div class="scard-num">—</div><div class="scard-lbl">Pendentes (hoje)</div></div>
+    <div class="scard em_recebimento"><div class="scard-num">—</div><div class="scard-lbl">Em Recebimento</div></div>
+    <div class="scard recebido"><div class="scard-num">—</div><div class="scard-lbl">Recebidos</div></div>
+    <div class="scard fechado"><div class="scard-num">—</div><div class="scard-lbl">Fechados</div></div>
+    <div class="scard paletes"><div class="scard-num">—</div><div class="scard-lbl">Paletes do Dia</div></div>
+  </div>
+
+  <!-- FARÓIS POR DEPÓSITO -->
+  <div class="section-title">Faróis por Depósito de Fábrica</div>
+  <div class="farol-grid" id="farolGrid">
+    <div class="no-data-card">Carregando dados...</div>
+  </div>
+
+  <!-- BACKLOG -->
+  <div class="backlog-section">
+    <div class="section-title">Backlog — Dias Anteriores</div>
+    <div class="backlog-table-wrap">
+      <table class="backlog-table">
+        <thead>
+          <tr>
+            <th>Depósito</th>
+            <th>Pendentes</th>
+            <th>Em Recebimento</th>
+            <th>Recebidos</th>
+            <th>Fechados</th>
+            <th>Total Paletes</th>
+          </tr>
+        </thead>
+        <tbody id="backlogBody">
+          <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px">Carregando...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<!-- ══════════════════ MODAL DETALHE ══════════════════ -->
+<div class="modal-overlay hidden" id="modalOverlay" onclick="fecharModal(event)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="modalTitle">Detalhamento</div>
+        <div class="modal-sub" id="modalSub"></div>
+      </div>
+      <button class="modal-close" onclick="fecharModalBtn()">✕</button>
+    </div>
+    <div class="modal-body">
+      <!-- filtros -->
+      <div class="modal-filters">
+        <label>SKU <input type="text" id="fSku" placeholder="ex: 5709" oninput="renderDetail()"></label>
+        <label>Nota/Ref <input type="text" id="fNota" placeholder="NF..." oninput="renderDetail()"></label>
+        <label>Data <input type="date" id="fData" onchange="renderDetail()"></label>
+        <label>Status Det.
+          <select id="fStatus" onchange="renderDetail()">
+            <option value="">Todos</option>
+            <option value="pendente">Pendente</option>
+            <option value="em_recebimento">Em Recebimento</option>
+            <option value="recebido">Recebido</option>
+            <option value="fechado">Fechado</option>
+          </select>
+        </label>
+        <label>Linhas/pág
+          <select id="fPagSize" onchange="renderDetail()">
+            <option value="25">25</option>
+            <option value="50" selected>50</option>
+            <option value="100">100</option>
+          </select>
+        </label>
+        <div class="modal-export-btns">
+          <button class="btn btn-outline btn-sm" onclick="exportExcel()">📥 Excel</button>
+          <button class="btn btn-outline btn-sm" onclick="exportPDF()">📄 PDF</button>
+        </div>
+      </div>
+      <!-- resumo do modal -->
+      <div id="modalSummary" style="display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap"></div>
+      <!-- tabela -->
+      <div class="detail-table-wrap" style="max-height:480px;overflow-y:auto">
+        <table class="detail-table">
+          <thead>
+            <tr>
+              <th>Recebimento</th>
+              <th>SKU</th>
+              <th>Ref/NF</th>
+              <th>Vencimento</th>
+              <th>Qtd Prevista</th>
+              <th>Qtd Recebida</th>
+              <th>UOM</th>
+              <th>Palete Inteiro</th>
+              <th>Palete Fração</th>
+              <th>Data Receb.</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="detailBody"></tbody>
+        </table>
+      </div>
+      <div class="pagination" id="detailPagination"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ LOADING ══════════════════ -->
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="spinner"></div>
+  <div class="loading-text">Carregando dados do WMS...</div>
+</div>
+
+<!-- ══════════════════ TOAST ══════════════════ -->
+<div class="toast hidden" id="toast"></div>
+
+<script>
+/* ══════════════════════════════════════════════════════════════
+   ESTADO GLOBAL
+══════════════════════════════════════════════════════════════ */
+let _farol        = null;   // dados do farol
+let _detalheItems = [];     // itens carregados no modal (linhas de detalhe)
+let _detalheCtx   = {};     // contexto do modal atual
+let _pagAtual     = 1;
+let _countdown    = 30;
+let _intervalo    = 30;
+
+const STATUS_LABELS = {
+  pendente:       "Pendente",
+  em_recebimento: "Em Recebimento",
+  recebido:       "Recebido",
+  fechado:        "Fechado",
+};
+const STATUS_COLORS = {
+  pendente:       "var(--pendente)",
+  em_recebimento: "var(--em-rec)",
+  recebido:       "var(--recebido)",
+  fechado:        "var(--fechado)",
+};
+const STATUS_CSS = {
+  pendente:       "sb-pendente",
+  em_recebimento: "sb-em-rec",
+  recebido:       "sb-recebido",
+  fechado:        "sb-fechado",
+};
+
+/* ══════════════════════════════════════════════════════════════
+   CLOCK
+══════════════════════════════════════════════════════════════ */
+function atualizarClock(){
+  const now = new Date();
+  document.getElementById("clock").textContent =
+    now.toLocaleTimeString("pt-BR", {hour:"2-digit",minute:"2-digit",second:"2-digit"});
+}
+setInterval(atualizarClock, 1000);
+atualizarClock();
+
+/* ══════════════════════════════════════════════════════════════
+   FAROL — CARGA
+══════════════════════════════════════════════════════════════ */
+async function carregarFarol() {
+  const dt = document.getElementById("filterDate").value;
+  let url = "/api/farol";
+  if (dt) url += `?data=${dt}`;
+
+  try {
+    mostrarLoading(false);
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    _farol = await r.json();
+    renderFarol(_farol);
+    resetContagem();
+  } catch(e) {
+    toast(`Erro ao carregar farol: ${e.message}`, "error");
+  } finally {
+    esconderLoading();
+  }
+}
+
+function resetContagem(){
+  _countdown = _intervalo;
+  document.getElementById("countdownLabel").textContent = _countdown + "s";
+}
+
+setInterval(() => {
+  _countdown--;
+  const el = document.getElementById("countdownLabel");
+  if (el) el.textContent = _countdown > 0 ? _countdown + "s" : "atualizando...";
+  if (_countdown <= 0) carregarFarol();
+}, 1000);
+
+async function forcarRefresh() {
+  try {
+    await fetch("/api/refresh", {method:"POST"});
+    toast("Refresh iniciado — aguarde 30s", "success");
+    setTimeout(carregarFarol, 3000);
+  } catch(e) { toast("Erro: " + e.message, "error"); }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   FAROL — RENDER
+══════════════════════════════════════════════════════════════ */
+function renderFarol(data){
+  if (!data) return;
+
+  const totais = data.totais || {};
+  const hoje   = totais.hoje || {};
+  const hojeTotal = _countAll(hoje);
+
+  // Atualizar info bar
+  document.getElementById("ultimaAtualizacao").textContent = data.ultima_atualizacao || "—";
+  document.getElementById("totalReceipts").textContent = totais.total_receipts ?? "—";
+
+  // Status dot
+  const dot = document.getElementById("liveDot");
+  const lbl = document.getElementById("liveLabel");
+  if (data.erro) {
+    dot.style.background = "#EF4444"; dot.style.boxShadow = "0 0 6px #EF4444";
+    lbl.textContent = "Erro";
+  } else {
+    dot.style.background = "#4ADE80"; dot.style.boxShadow = "0 0 6px #4ADE80";
+    lbl.textContent = "Conectado";
+  }
+
+  // Summary cards
+  const sc = document.getElementById("summaryCards");
+  sc.innerHTML = `
+    <div class="scard pendente">
+      <div class="scard-num">${(hoje.pendente||{}).count||0}</div>
+      <div class="scard-lbl">Pendentes (hoje)</div>
+      <div class="scard-sub">${(hoje.pendente||{}).paletes||0} paletes</div>
+    </div>
+    <div class="scard em_recebimento">
+      <div class="scard-num">${(hoje.em_recebimento||{}).count||0}</div>
+      <div class="scard-lbl">Em Recebimento</div>
+      <div class="scard-sub">${(hoje.em_recebimento||{}).paletes||0} paletes</div>
+    </div>
+    <div class="scard recebido">
+      <div class="scard-num">${(hoje.recebido||{}).count||0}</div>
+      <div class="scard-lbl">Recebidos</div>
+      <div class="scard-sub">${(hoje.recebido||{}).paletes||0} paletes</div>
+    </div>
+    <div class="scard fechado">
+      <div class="scard-num">${(hoje.fechado||{}).count||0}</div>
+      <div class="scard-lbl">Fechados</div>
+      <div class="scard-sub">${(hoje.fechado||{}).paletes||0} paletes</div>
+    </div>
+    <div class="scard paletes">
+      <div class="scard-num">${totais.total_paletes_dia||0}</div>
+      <div class="scard-lbl">Paletes do Dia</div>
+      <div class="scard-sub">${hojeTotal} recebimentos</div>
+    </div>
+  `;
+
+  // Faróis por depósito
+  const depositos = data.depositos || {};
+  const grid = document.getElementById("farolGrid");
+
+  // Filtrar depósitos com alguma atividade
+  const deps = Object.entries(depositos)
+    .filter(([k]) => k !== "OUTROS")
+    .sort(([a],[b]) => parseInt(a) - parseInt(b));
+
+  if (deps.length === 0) {
+    grid.innerHTML = '<div class="no-data-card">Nenhum dado de depósito disponível</div>';
+  } else {
+    grid.innerHTML = deps.map(([dep, info]) => renderDepCard(dep, info, hojeTotal)).join("");
+  }
+
+  // Backlog
+  renderBacklog(data.depositos);
+}
+
+function renderDepCard(dep, info, totalHoje){
+  const hoje  = info.hoje  || {};
+  const nomes = {
+    pendente:"Pendente",em_recebimento:"Em Recebimento",recebido:"Recebido",fechado:"Fechado"
+  };
+  const cssMap = {
+    pendente:"sb-pendente",em_recebimento:"sb-em-rec",recebido:"sb-recebido",fechado:"sb-fechado"
+  };
+  const total = _countAll(hoje);
+  const paletes = info.total_paletes_dia || 0;
+
+  const boxes = ["pendente","em_recebimento","recebido","fechado"].map(s => {
+    const cnt = (hoje[s]||{}).count || 0;
+    const pal = (hoje[s]||{}).paletes || 0;
+    const pct = total > 0 ? Math.round(cnt/total*100) : 0;
+    return `<div class="status-box ${cssMap[s]}" onclick="abrirDetalhe('${dep}','${s}','hoje')">
+      <div class="sb-label">${nomes[s]}</div>
+      <div class="sb-count">${cnt}</div>
+      <div class="sb-pct" style="color:${STATUS_COLORS[s]}">${pct}%</div>
+      <div class="sb-paletes">${pal} palete(s)</div>
+    </div>`;
+  }).join("");
+
+  return `<div class="dep-card">
+    <div class="dep-header">
+      <div>
+        <div class="dep-name">Dep. ${dep} — ${info.nome}</div>
+        <div class="dep-zona">${info.zona||""}</div>
+      </div>
+      <div class="dep-paletes-badge">🔷 ${paletes} pal.</div>
+    </div>
+    <div class="dep-status-grid">${boxes}</div>
+  </div>`;
+}
+
+function renderBacklog(depositos){
+  const tbody = document.getElementById("backlogBody");
+  if (!depositos) { tbody.innerHTML = ""; return; }
+
+  const rows = Object.entries(depositos)
+    .filter(([k]) => k !== "OUTROS")
+    .sort(([a],[b]) => parseInt(a)-parseInt(b))
+    .map(([dep, info]) => {
+      const bl = info.backlog || {};
+      const totalPal = ["pendente","em_recebimento","recebido","fechado"].reduce((s,st) => s + ((bl[st]||{}).paletes||0), 0);
+      const anyBl = Object.values(bl).some(v => v.count > 0);
+      if (!anyBl) return "";
+      return `<tr>
+        <td class="bl-dep">Dep. ${dep} — ${info.nome}</td>
+        <td>${countBadge(bl.pendente,"pend")}</td>
+        <td>${countBadge(bl.em_recebimento,"emrec")}</td>
+        <td>${countBadge(bl.recebido,"rec")}</td>
+        <td>${countBadge(bl.fechado,"fec")}</td>
+        <td><strong>${totalPal}</strong></td>
+      </tr>`;
+    }).filter(Boolean);
+
+  tbody.innerHTML = rows.length
+    ? rows.join("")
+    : `<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px">✓ Sem backlog nos dias anteriores</td></tr>`;
+}
+
+function countBadge(obj, cls){
+  const n = (obj||{}).count || 0;
+  if (n === 0) return `<span class="count-badge cb-zero">—</span>`;
+  return `<span class="count-badge cb-${cls}" onclick="abrirDetalhe('','${cls === 'pend' ? 'pendente' : cls === 'emrec' ? 'em_recebimento' : cls === 'rec' ? 'recebido' : 'fechado'}','backlog')" style="cursor:pointer">${n}</span>`;
+}
+
+function _countAll(obj){
+  return Object.values(obj||{}).reduce((s,v) => s + (v.count||0), 0);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   MODAL DETALHE
+══════════════════════════════════════════════════════════════ */
+async function abrirDetalhe(deposito, status, bucket) {
+  _detalheCtx = {deposito, status, bucket};
+  _pagAtual = 1;
+
+  // Limpa filtros
+  ["fSku","fNota","fData"].forEach(id => document.getElementById(id).value = "");
+  document.getElementById("fStatus").value = "";
+
+  let url = `/api/receipts?deposito=${deposito}&status=${status}&bucket=${bucket}`;
+  try {
+    mostrarLoading(false);
+    const r = await fetch(url);
+    const data = await r.json();
+    _detalheItems = [];
+    for (const rec of (data.items||[])) {
+      for (const linha of (rec.linhas||[])) {
+        _detalheItems.push({
+          receiptkey: rec.receiptkey,
+          externkey:  rec.externkey,
+          ...linha,
+          data_criacao:     rec.data_criacao,
+          status_receipt:   rec.status,
+          paletes_rec:      rec.paletes,
+        });
+      }
+      // Se sem linhas, adicionar linha resumo
+      if (!(rec.linhas||[]).length) {
+        _detalheItems.push({
+          receiptkey: rec.receiptkey,
+          externkey:  rec.externkey,
+          sku: "—", linha: "—", qty_previsto: 0, qty_recebido: 0, uom: "—",
+          pallet: 0, nf: "—", vencimento: "—", data_receb: "—",
+          data_criacao: rec.data_criacao,
+          status_receipt: rec.status,
+          paletes_rec: rec.paletes,
+        });
+      }
+    }
+
+    const depNome = deposito ? `Dep. ${deposito}` : "Todos";
+    document.getElementById("modalTitle").textContent =
+      `${depNome} — ${STATUS_LABELS[status]||status}`;
+    document.getElementById("modalSub").textContent =
+      `${bucket === "hoje" ? "Hoje" : "Backlog"} · ${data.total} recebimento(s)`;
+
+    document.getElementById("modalOverlay").classList.remove("hidden");
+    renderDetail();
+  } catch(e) {
+    toast("Erro ao carregar detalhe: " + e.message, "error");
+  } finally {
+    esconderLoading();
+  }
+}
+
+function fecharModal(e){
+  if (e.target === document.getElementById("modalOverlay"))
+    document.getElementById("modalOverlay").classList.add("hidden");
+}
+function fecharModalBtn(){
+  document.getElementById("modalOverlay").classList.add("hidden");
+}
+
+function renderDetail(){
+  const fSku    = (document.getElementById("fSku").value||"").toLowerCase();
+  const fNota   = (document.getElementById("fNota").value||"").toLowerCase();
+  const fData   = document.getElementById("fData").value||"";
+  const fStatus = document.getElementById("fStatus").value||"";
+  const pgSize  = parseInt(document.getElementById("fPagSize").value) || 50;
+
+  const filtered = _detalheItems.filter(it => {
+    if (fSku   && !String(it.sku||"").toLowerCase().includes(fSku))      return false;
+    if (fNota  && !String(it.nf||"").toLowerCase().includes(fNota) &&
+                  !String(it.receiptkey||"").toLowerCase().includes(fNota)) return false;
+    if (fData  && it.data_receb !== fData && it.data_criacao !== fData)  return false;
+    if (fStatus && it.status !== fStatus)                                return false;
+    return true;
+  });
+
+  // Paginação
+  const totalPag = Math.ceil(filtered.length / pgSize) || 1;
+  if (_pagAtual > totalPag) _pagAtual = 1;
+  const start = (_pagAtual - 1) * pgSize;
+  const page  = filtered.slice(start, start + pgSize);
+
+  // Sumário do modal
+  const totalPaletes = _detalheItems.reduce((s,it) => s + (it.pallet||0), 0);
+  const totalPrev    = _detalheItems.reduce((s,it) => s + (it.qty_previsto||0), 0);
+  const totalRec     = _detalheItems.reduce((s,it) => s + (it.qty_recebido||0), 0);
+  document.getElementById("modalSummary").innerHTML = `
+    <div style="background:#EEF2FF;border-radius:6px;padding:6px 12px;font-size:11px">
+      <strong>${filtered.length}</strong> linha(s) filtradas de <strong>${_detalheItems.length}</strong>
+    </div>
+    <div style="background:#EEF2FF;border-radius:6px;padding:6px 12px;font-size:11px">
+      Qtd Prevista: <strong>${_fmt(totalPrev)}</strong>
+    </div>
+    <div style="background:#EEF2FF;border-radius:6px;padding:6px 12px;font-size:11px">
+      Qtd Recebida: <strong>${_fmt(totalRec)}</strong>
+    </div>
+  `;
+
+  // Tabela
+  const tbody = document.getElementById("detailBody");
+  if (!page.length) {
+    tbody.innerHTML = `<tr><td colspan="11" class="empty-state"><div class="icon">📭</div>
+      <h3>Nenhum dado encontrado</h3></td></tr>`;
+  } else {
+    tbody.innerHTML = page.map(it => {
+      const palInt = it.pallet ? Math.floor(it.pallet) : 0;
+      const palFra = it.pallet && (it.pallet - palInt) > 0.01 ? 1 : 0;
+      const palBadge = palInt > 0
+        ? `<span class="badge-int">🔷 ${palInt} int.</span> ${palFra ? '<span class="badge-fra">◻ frac.</span>' : ''}`
+        : `<span class="badge-zero">—</span>`;
+      const stColor = STATUS_COLORS[it.status] || "var(--muted)";
+      return `<tr>
+        <td class="td-sku">${it.receiptkey||"—"}</td>
+        <td class="td-sku">${it.sku||"—"}</td>
+        <td>${it.nf||it.externkey||"—"}</td>
+        <td>${it.vencimento||"—"}</td>
+        <td class="td-qty">${_fmt(it.qty_previsto)}</td>
+        <td class="td-qty"><strong>${_fmt(it.qty_recebido)}</strong></td>
+        <td>${it.uom||"—"}</td>
+        <td class="td-palet">${palInt > 0 ? `<span class="badge-int">🔷 ${palInt}</span>` : '<span class="badge-zero">—</span>'}</td>
+        <td class="td-palet">${palFra > 0 ? '<span class="badge-fra">◻ frac.</span>' : '<span class="badge-zero">—</span>'}</td>
+        <td>${it.data_receb||it.data_criacao||"—"}</td>
+        <td><span style="color:${stColor};font-weight:700;font-size:11px">${STATUS_LABELS[it.status]||it.status||"—"}</span></td>
+      </tr>`;
+    }).join("");
+  }
+
+  // Paginação
+  const pag = document.getElementById("detailPagination");
+  pag.innerHTML = `<span>${filtered.length} linha(s)</span>
+    <div class="pag-btns">
+      <button class="pag-btn${_pagAtual===1?' disabled':''}" onclick="mudaPag(${_pagAtual-1})">‹ Ant</button>
+      <button class="pag-btn active">${_pagAtual} / ${totalPag}</button>
+      <button class="pag-btn${_pagAtual>=totalPag?' disabled':''}" onclick="mudaPag(${_pagAtual+1})">Prox ›</button>
+    </div>
+    <span>Página ${_pagAtual} de ${totalPag}</span>`;
+}
+
+function mudaPag(p){
+  const pgSize = parseInt(document.getElementById("fPagSize").value)||50;
+  const total  = _detalheItems.length;
+  const maxPag = Math.ceil(total / pgSize) || 1;
+  if (p < 1 || p > maxPag) return;
+  _pagAtual = p;
+  renderDetail();
+}
+
+/* ══════════════════════════════════════════════════════════════
+   EXPORTAÇÃO
+══════════════════════════════════════════════════════════════ */
+function exportExcel(){
+  const fSku  = document.getElementById("fSku").value||"";
+  const items = fSku
+    ? _detalheItems.filter(it => String(it.sku||"").includes(fSku))
+    : _detalheItems;
+
+  // Montar CSV (Excel aceita CSV)
+  const header = ["Recebimento","SKU","Ref/NF","Vencimento","Qtd Prevista","Qtd Recebida",
+                  "UOM","Paletes Inteiros","Palete Fração","Data Receb.","Status"];
+  const rows = items.map(it => {
+    const palInt = it.pallet ? Math.floor(it.pallet) : 0;
+    const palFra = it.pallet && (it.pallet - palInt) > 0.01 ? 1 : 0;
+    return [it.receiptkey,it.sku,it.nf||it.externkey||"",it.vencimento||"",
+            it.qty_previsto,it.qty_recebido,it.uom,palInt,palFra,
+            it.data_receb||it.data_criacao||"",STATUS_LABELS[it.status]||it.status||""].join(";");
+  });
+  const csv = "﻿" + [header.join(";"), ...rows].join("\n");
+  _download(csv, `Recebimento_${_detalheCtx.deposito||'ALL'}_${_detalheCtx.status}_${_hoje()}.csv`, "text/csv");
+  toast("Exportação Excel concluída", "success");
+}
+
+function exportPDF(){
+  const ctx = _detalheCtx;
+  const title = `Dep. ${ctx.deposito} — ${STATUS_LABELS[ctx.status]||ctx.status}`;
+  const win = window.open("", "_blank");
+  const rows = _detalheItems.map(it => {
+    const palInt = it.pallet ? Math.floor(it.pallet) : 0;
+    const palFra = it.pallet && (it.pallet - palInt) > 0.01 ? 1 : 0;
+    return `<tr>
+      <td>${it.receiptkey||"—"}</td><td>${it.sku||"—"}</td>
+      <td>${it.nf||it.externkey||"—"}</td><td>${it.vencimento||"—"}</td>
+      <td>${_fmt(it.qty_previsto)}</td><td><strong>${_fmt(it.qty_recebido)}</strong></td>
+      <td>${it.uom||"—"}</td>
+      <td>${palInt > 0 ? palInt + " int." : "—"}</td>
+      <td>${palFra > 0 ? "frac." : "—"}</td>
+      <td>${it.data_receb||it.data_criacao||"—"}</td>
+      <td>${STATUS_LABELS[it.status]||it.status||"—"}</td>
+    </tr>`;
+  }).join("");
+
+  win.document.write(`<!DOCTYPE html><html><head>
+    <meta charset="UTF-8"><title>${title}</title>
+    <style>body{font-family:Arial,sans-serif;font-size:11px;padding:20px}
+    h2{color:#0D2580;margin-bottom:4px}p{color:#666;margin-bottom:12px}
+    table{width:100%;border-collapse:collapse}
+    th{background:#0D2580;color:#fff;padding:7px 10px;text-align:left;font-size:10px}
+    td{padding:6px 10px;border-bottom:1px solid #eee}
+    tr:nth-child(even)td{background:#F8FAFF}
+    @media print{@page{size:landscape}}</style>
+  </head><body>
+    <h2>Gerenciamento de Rotina Logística BURN RJ</h2>
+    <p><strong>${title}</strong> &nbsp;|&nbsp; Gerado: ${new Date().toLocaleString("pt-BR")}</p>
+    <table><thead><tr>
+      <th>Recebimento</th><th>SKU</th><th>Ref/NF</th><th>Vencimento</th>
+      <th>Qtd Prev.</th><th>Qtd Rec.</th><th>UOM</th>
+      <th>Pal. Int.</th><th>Pal. Frac.</th><th>Data Receb.</th><th>Status</th>
+    </tr></thead><tbody>${rows}</tbody></table>
+    <script>window.print();<\/script>
+  </body></html>`);
+  win.document.close();
+  toast("PDF gerado para impressão", "success");
+}
+
+/* ══════════════════════════════════════════════════════════════
+   NAV
+══════════════════════════════════════════════════════════════ */
+function setNav(id){
+  document.querySelectorAll(".nav-item:not(.disabled)").forEach(el => {
+    el.classList.remove("active");
+    if (el.textContent.toLowerCase().includes("recebimento")) el.classList.add("active");
+  });
+}
+
+/* ══════════════════════════════════════════════════════════════
+   HELPERS
+══════════════════════════════════════════════════════════════ */
+function _fmt(n){ return Number(n||0).toLocaleString("pt-BR",{minimumFractionDigits:0,maximumFractionDigits:2}); }
+function _hoje(){ return new Date().toISOString().slice(0,10); }
+function _download(content, filename, type){
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([content],{type}));
+  a.download = filename;
+  a.click();
+}
+function mostrarLoading(b=true){ document.getElementById("loadingOverlay").classList.toggle("hidden",!b); }
+function esconderLoading(){ document.getElementById("loadingOverlay").classList.add("hidden"); }
+function toast(msg, type=""){
+  const el = document.getElementById("toast");
+  el.className = "toast" + (type ? " " + type : "");
+  el.textContent = msg;
+  setTimeout(() => el.classList.add("hidden"), 3500);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   INIT
+══════════════════════════════════════════════════════════════ */
+document.addEventListener("DOMContentLoaded", () => {
+  document.getElementById("filterDate").value = _hoje();
+  mostrarLoading(true);
+  carregarFarol();
+});
+</script>
+</body>
+</html>
