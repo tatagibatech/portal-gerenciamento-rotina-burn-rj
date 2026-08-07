@@ -128,32 +128,50 @@ def api_status():
 
 @app.get("/api/debug-wms-list")
 def api_debug_wms_list():
-    """Testa endpoint /receipts e /advancedshipnotice com data de hoje e ontem."""
-    from wms_config import CONFIG as C
+    """Testa vários métodos de listagem de ASNs de hoje."""
     from receipt_collector import WMSClient
     from datetime import date, timedelta
     client = WMSClient()
+    dt = date.today().isoformat()
     resultado = {}
-    for delta in (0, 1):
-        dt = (date.today() - timedelta(days=delta)).isoformat()
-        resultado[dt] = {}
-        for param in ("receiptdate", "adddate"):
-            try:
-                r = client.get("receipts", params={"storerkey": "BURN", param: dt, "recordcount": 20}, timeout=30)
-                resultado[dt][f"receipts_{param}"] = {
-                    "status_code": r.status_code,
-                    "keys": [x.get("receiptkey") for x in (r.json() if isinstance(r.json(), list) else [])][:10] if r.status_code == 200 else r.text[:300],
-                }
-            except Exception as e:
-                resultado[dt][f"receipts_{param}"] = {"erro": str(e)}
+
+    # GET com params de data
+    for param in ("receiptdate", "adddate"):
         try:
-            r = client.get("advancedshipnotice", params={"storerkey": "BURN", "adddate": dt, "recordcount": 20}, timeout=30)
-            resultado[dt]["asn_adddate"] = {
-                "status_code": r.status_code,
-                "keys": [x.get("receiptkey") for x in (r.json() if isinstance(r.json(), list) else [])][:10] if r.status_code == 200 else r.text[:300],
-            }
+            r = client.get("receipts", params={"storerkey": "BURN", param: dt, "recordcount": 20}, timeout=30)
+            resultado[f"GET_receipts_{param}"] = {"status": r.status_code, "body": r.text[:300]}
         except Exception as e:
-            resultado[dt]["asn_adddate"] = {"erro": str(e)}
+            resultado[f"GET_receipts_{param}"] = {"erro": str(e)}
+
+    # POST showreceiptlist
+    for path in ("receipts/showreceiptlist", "advancedshipnotice/showadvancedshipnoticelist"):
+        for body in (
+            {"storerkey": "BURN", "adddate": dt},
+            {"storerkey": "BURN", "receiptdate": dt},
+            {"storerkey": "BURN"},
+        ):
+            label = f"POST_{path}__{list(body.keys())}"
+            try:
+                r = client.post(path, body=body, timeout=30)
+                keys = []
+                if r.status_code == 200:
+                    data = r.json()
+                    if isinstance(data, list):
+                        keys = [x.get("receiptkey") for x in data[:10]]
+                resultado[label] = {"status": r.status_code, "keys": keys, "body_sample": r.text[:200]}
+            except Exception as e:
+                resultado[label] = {"erro": str(e)}
+
+    # Exports com limite maior
+    try:
+        r = client.get("exports", params={"type": "ASNCOMPLETED", "restrictrowsto": 10}, timeout=30)
+        sample = []
+        if r.status_code == 200 and isinstance(r.json(), list):
+            sample = [{"key1": x.get("key1"), "key2": x.get("key2"), "adddate": x.get("adddate", x.get("createdate", ""))} for x in r.json()[:5]]
+        resultado["exports_sample_10"] = {"status": r.status_code, "sample": sample}
+    except Exception as e:
+        resultado["exports_sample_10"] = {"erro": str(e)}
+
     return jsonify(resultado)
 
 
