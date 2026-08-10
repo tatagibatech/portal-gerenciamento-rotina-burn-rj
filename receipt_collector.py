@@ -288,6 +288,16 @@ def _calcula_paletes(details: list, pack_cache: dict) -> dict:
     }
 
 
+TIPO_ORDEM_PRODUCAO = {"10"}  # códigos de receipttype aceitos
+
+
+def _is_ordem_producao(receipt: dict) -> bool:
+    """Retorna True se a ASN é do tipo Ordem de Produção (receipttype=10)."""
+    tipo = str(receipt.get("receipttype") or receipt.get("type") or
+               receipt.get("receipttypecode") or "").strip()
+    return tipo in TIPO_ORDEM_PRODUCAO
+
+
 def _receipt_to_dict(receipt: dict, pack_cache: dict) -> dict:
     """Normaliza um receipt da API para estrutura interna."""
     details = receipt.get("receiptdetails") or []
@@ -391,11 +401,14 @@ def _receipt_to_dict(receipt: dict, pack_cache: dict) -> dict:
         receipt.get("SupplierCode") or receipt.get("supplierCode") or
         receipt.get("suppliercode") or receipt.get("supplierKey") or ""
     )
+    receipttype = str(receipt.get("receipttype") or receipt.get("type") or
+                      receipt.get("receipttypecode") or "").strip()
 
     return {
         "receiptkey":        receipt.get("receiptkey") or "",
         "externkey":         receipt.get("externreceiptkey") or "",
         "supplier_code":     supplier_code,
+        "receipttype":       receipttype,
         "status_raw":        status_raw,
         "status":            status_derivado,
         "status_wms":        status,
@@ -581,6 +594,11 @@ class ReceiptCollector:
                 try:
                     receipt = self._client.get_asn(rk)
                     if receipt:
+                        # Filtrar: apenas Ordens de Produção (receipttype=10)
+                        if not _is_ordem_producao(receipt):
+                            log.debug(f"Receipt {rk} ignorado (tipo {receipt.get('receipttype','?')} ≠ OP).")
+                            continue
+
                         # Buscar pack de cada linha via /{warehouse}/packs/{packkey}
                         for det in (receipt.get("receiptdetails") or []):
                             pk = det.get("packkey") or ""
@@ -591,7 +609,6 @@ class ReceiptCollector:
                         new_receipts[rk] = r_dict
                         self._known_keys.add(rk)
                     else:
-                        # Key inválida — remover do cache depois
                         log.debug(f"Receipt {rk} não encontrado.")
                 except Exception as e:
                     log.warning(f"Erro ao buscar receipt {rk}: {e}")
@@ -640,6 +657,9 @@ class ReceiptCollector:
             if not receipt:
                 receipt = self._client.get_asn_by_externkey(receiptkey)
             if not receipt:
+                return None
+            if not _is_ordem_producao(receipt):
+                log.info(f"ASN {receiptkey} não é Ordem de Produção (tipo={receipt.get('receipttype','?')}) — ignorada.")
                 return None
             for det in (receipt.get("receiptdetails") or []):
                 pk = det.get("packkey") or ""
