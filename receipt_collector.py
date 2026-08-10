@@ -331,6 +331,11 @@ def _receipt_to_dict(receipt: dict, pack_cache: dict) -> dict:
     add_dt  = (receipt.get("adddate") or "")[:10]
     close_dt = (receipt.get("closeddate") or "")[:10]
     rec_dt   = (receipt.get("receiptdate") or "")[:10]
+    # Data da última atualização — campo primário para classificar "hoje"
+    edit_dt = (
+        receipt.get("editdate") or receipt.get("lastmoddate") or
+        receipt.get("updatedate") or receipt.get("modifieddate") or ""
+    )[:10]
 
     paletes = _calcula_paletes(details, pack_cache)
 
@@ -388,20 +393,21 @@ def _receipt_to_dict(receipt: dict, pack_cache: dict) -> dict:
     )
 
     return {
-        "receiptkey":       receipt.get("receiptkey") or "",
-        "externkey":        receipt.get("externreceiptkey") or "",
-        "supplier_code":    supplier_code,
-        "status_raw":       status_raw,
-        "status":           status_derivado,
-        "status_wms":       status,
-        "status_label":     STATUS_LABEL.get(status_derivado, status_derivado),
-        "deposito":         deposito,
-        "data_criacao":     add_dt,
-        "data_recebimento": rec_dt,
-        "data_fechamento":  close_dt,
-        "n_linhas":         len(details),
-        "paletes":          paletes,
-        "linhas":           linhas,
+        "receiptkey":        receipt.get("receiptkey") or "",
+        "externkey":         receipt.get("externreceiptkey") or "",
+        "supplier_code":     supplier_code,
+        "status_raw":        status_raw,
+        "status":            status_derivado,
+        "status_wms":        status,
+        "status_label":      STATUS_LABEL.get(status_derivado, status_derivado),
+        "deposito":          deposito,
+        "data_criacao":      add_dt,
+        "data_recebimento":  rec_dt,
+        "data_fechamento":   close_dt,
+        "data_atualizacao":  edit_dt or add_dt,  # fallback para adddate se editdate vazio
+        "n_linhas":          len(details),
+        "paletes":           paletes,
+        "linhas":            linhas,
     }
 
 
@@ -703,12 +709,12 @@ class ReceiptCollector:
             status = rec.get("status") or "pendente"
             paletes = rec["paletes"]["paletes_total"]
 
-            # Determinar se é hoje ou backlog
-            data_ref = rec.get("data_criacao") or rec.get("data_recebimento") or ""
+            # Hoje = atualizado hoje (editdate); backlog = criado antes e não atualizado hoje
+            data_atual = rec.get("data_atualizacao") or rec.get("data_criacao") or ""
             if data_filtro:
-                is_hoje = (data_ref == data_filtro)
+                is_hoje = (data_atual == data_filtro)
             else:
-                is_hoje = (data_ref == hoje_str)
+                is_hoje = (data_atual == hoje_str)
 
             bucket = "hoje" if is_hoje else "backlog"
             resultado[dep][bucket][status]["count"]      += 1
@@ -757,8 +763,8 @@ class ReceiptCollector:
                 continue
             if status and rec.get("status") != status:
                 continue
-            data_ref = rec.get("data_criacao") or ""
-            is_hoje = (data_ref == hoje_str)
+            data_atual = rec.get("data_atualizacao") or rec.get("data_criacao") or ""
+            is_hoje = (data_atual == hoje_str)
             if bucket == "hoje" and not is_hoje:
                 continue
             if bucket == "backlog" and is_hoje:
