@@ -394,6 +394,8 @@ main{padding:20px 24px 40px;max-width:1600px;margin:0 auto}
         <input type="date" id="filterDate" onchange="carregarFarol()">
       </div>
       <button class="btn btn-outline btn-sm" onclick="carregarFarol()">↺ Atualizar</button>
+      <button class="btn btn-outline btn-sm" onclick="exportarCompleto('excel')">📥 Excel</button>
+      <button class="btn btn-outline btn-sm" onclick="exportarCompleto('pdf')">📄 PDF</button>
       <button class="btn btn-primary btn-sm" onclick="forcarRefresh()">⚡ Forçar Refresh</button>
     </div>
   </div>
@@ -1011,6 +1013,216 @@ function toast(msg, type=""){
   el.className = "toast" + (type ? " " + type : "");
   el.textContent = msg;
   setTimeout(() => el.classList.add("hidden"), 3500);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   EXPORTAÇÃO COMPLETA (DASHBOARD + TODOS OS RECEBIMENTOS)
+══════════════════════════════════════════════════════════════ */
+async function exportarCompleto(tipo) {
+  mostrarLoading(true);
+  try {
+    const dt = document.getElementById("filterDate").value;
+    const [rFarol, rRec] = await Promise.all([
+      fetch("/api/farol" + (dt ? `?data=${dt}` : "")),
+      fetch("/api/receipts?bucket=todos"),
+    ]);
+    const farol = await rFarol.json();
+    const recData = await rRec.json();
+
+    const hoje = farol.hoje || (farol.totais || {}).hoje_str || dt || _hoje();
+    const geradoEm = new Date().toLocaleString("pt-BR");
+    const totais = farol.totais || {};
+    const depositos = farol.depositos || {};
+
+    // Montar linhas de detalhe
+    const linhas = [];
+    for (const rec of (recData.items || [])) {
+      const base = {
+        receiptkey:    rec.receiptkey || "—",
+        externkey:     rec.externkey || "—",
+        deposito:      rec.deposito || "—",
+        supplier_name: rec.supplier_name || "—",
+        status:        STATUS_LABELS[rec.status] || rec.status || "—",
+        data_criacao:  rec.data_criacao || "—",
+        data_atualizacao: rec.data_atualizacao || "—",
+        editwho:       rec.editwho || "—",
+        pal_total:     rec.paletes ? (rec.paletes.paletes_rec_total || 0) : 0,
+      };
+      if ((rec.linhas || []).length) {
+        for (const l of rec.linhas) {
+          const palRec = l.pal_recebido != null ? l.pal_recebido : 0;
+          const palInt = palRec > 0 ? Math.floor(palRec) : 0;
+          const palFra = palRec > 0 && (palRec - palInt) > 0.01 ? 1 : 0;
+          linhas.push({...base,
+            sku: l.sku || "—", nf: l.nf || "—", vencimento: l.vencimento || "—",
+            qty_previsto: l.qty_previsto || 0, qty_recebido: l.qty_recebido || 0,
+            uom: l.uom || "—", pal_fechado: palInt, pal_fracao: palFra,
+            data_receb: l.data_receb || "—", status_linha: STATUS_LABELS[l.status] || l.status || "—",
+          });
+        }
+      } else {
+        linhas.push({...base, sku:"—", nf:"—", vencimento:"—",
+          qty_previsto:0, qty_recebido:0, uom:"—", pal_fechado:0, pal_fracao:0,
+          data_receb:"—", status_linha: base.status});
+      }
+    }
+
+    if (tipo === "excel") {
+      _exportarCompletoExcel(farol, totais, depositos, linhas, geradoEm, dt || _hoje());
+    } else {
+      _exportarCompletoPDF(farol, totais, depositos, linhas, geradoEm, dt || _hoje());
+    }
+  } catch(e) {
+    toast("Erro ao exportar: " + e.message, "error");
+  } finally {
+    esconderLoading();
+  }
+}
+
+function _exportarCompletoExcel(farol, totais, depositos, linhas, geradoEm, dataFiltro) {
+  const sep = ";";
+  const rows = [];
+
+  // Cabeçalho do relatório
+  rows.push(["GERENCIAMENTO DE ROTINA LOGÍSTICA BURN RJ"].join(sep));
+  rows.push(["Painel de Recebimento — Produto Acabado"].join(sep));
+  rows.push([`Data de Referência: ${dataFiltro}`, `Gerado em: ${geradoEm}`].join(sep));
+  rows.push([]);
+
+  // Dashboard — totais globais
+  rows.push(["DASHBOARD GERAL"].join(sep));
+  rows.push(["","Pendente","Em Recebimento","Recebido","Fechado","Total Receb.","Total Paletes"].join(sep));
+  const th = (totais.hoje || {});
+  const tb = (totais.backlog || {});
+  const totalHoje = ["pendente","em_recebimento","recebido","fechado"].reduce((s,st)=>s+((th[st]||{}).count||0),0);
+  const totalBl   = ["pendente","em_recebimento","recebido","fechado"].reduce((s,st)=>s+((tb[st]||{}).count||0),0);
+  rows.push(["Hoje",
+    (th.pendente||{}).count||0, (th.em_recebimento||{}).count||0,
+    (th.recebido||{}).count||0, (th.fechado||{}).count||0,
+    totalHoje, totais.total_paletes_dia||0].join(sep));
+  rows.push(["Backlog",
+    (tb.pendente||{}).count||0, (tb.em_recebimento||{}).count||0,
+    (tb.recebido||{}).count||0, (tb.fechado||{}).count||0,
+    totalBl, ""].join(sep));
+  rows.push([`Total Geral`, "", "", "", "", totais.total_receipts||0, ""].join(sep));
+  rows.push([]);
+
+  // Dashboard — por depósito
+  rows.push(["RESUMO POR DEPÓSITO (HOJE)"].join(sep));
+  rows.push(["Depósito","Expedidor","Pendente","Em Rec.","Recebido","Fechado","Paletes"].join(sep));
+  for (const [dep, info] of Object.entries(depositos).filter(([k])=>k!=="OUTROS").sort(([a],[b])=>parseInt(a)-parseInt(b))) {
+    const hj = info.hoje || {};
+    rows.push([dep, info.supplier_name||info.nome||dep,
+      (hj.pendente||{}).count||0, (hj.em_recebimento||{}).count||0,
+      (hj.recebido||{}).count||0, (hj.fechado||{}).count||0,
+      info.total_paletes_dia||0].join(sep));
+  }
+  rows.push([]);
+
+  // Detalhe completo
+  rows.push(["DETALHE COMPLETO DOS RECEBIMENTOS"].join(sep));
+  rows.push(["Recebimento","Depósito","Expedidor","Status Rec.","SKU","Ref/NF",
+             "Vencimento","Qtd Prev.","Qtd Rec.","UOM",
+             "Pal. Fechado","Fração","Data Receb.","Status Linha",
+             "Data Atualiz.","Atualiz. por"].join(sep));
+  for (const l of linhas) {
+    rows.push([l.receiptkey, l.deposito, l.supplier_name, l.status,
+               l.sku, l.nf, l.vencimento, l.qty_previsto, l.qty_recebido, l.uom,
+               l.pal_fechado, l.pal_fracao, l.data_receb, l.status_linha,
+               l.data_atualizacao, l.editwho].join(sep));
+  }
+
+  const csv = "﻿" + rows.map(r => Array.isArray(r) ? r.join(sep) : r).join("\n");
+  _download(csv, `Relatorio_Recebimento_BURN_${dataFiltro}.csv`, "text/csv");
+  toast("Excel exportado com sucesso", "success");
+}
+
+function _exportarCompletoPDF(farol, totais, depositos, linhas, geradoEm, dataFiltro) {
+  const th = totais.hoje || {};
+  const tb = totais.backlog || {};
+
+  // Cards do dashboard
+  const dashCards = [
+    {lbl:"Pendentes (hoje)", val:(th.pendente||{}).count||0, cor:"#F59E0B"},
+    {lbl:"Em Recebimento",   val:(th.em_recebimento||{}).count||0, cor:"#3B82F6"},
+    {lbl:"Recebidos (hoje)", val:(th.recebido||{}).count||0, cor:"#22C55E"},
+    {lbl:"Fechados (hoje)",  val:(th.fechado||{}).count||0, cor:"#6B7280"},
+    {lbl:"Paletes do Dia",   val:totais.total_paletes_dia||0, cor:"#2563EB"},
+    {lbl:"Total Carregados", val:totais.total_receipts||0, cor:"#0D2580"},
+  ].map(c=>`<div style="background:#fff;border-radius:8px;padding:12px 16px;border-left:4px solid ${c.cor};min-width:130px">
+    <div style="font-size:28px;font-weight:800;color:${c.cor}">${c.val}</div>
+    <div style="font-size:10px;color:#6B7280;font-weight:600;text-transform:uppercase">${c.lbl}</div>
+  </div>`).join("");
+
+  // Tabela por depósito
+  const depRows = Object.entries(depositos).filter(([k])=>k!=="OUTROS")
+    .sort(([a],[b])=>parseInt(a)-parseInt(b))
+    .map(([dep,info])=>{
+      const hj=info.hoje||{};
+      return `<tr>
+        <td><strong>${dep}</strong></td>
+        <td>${info.supplier_name||info.nome||dep}</td>
+        <td style="color:#F59E0B;font-weight:700">${(hj.pendente||{}).count||0}</td>
+        <td style="color:#3B82F6;font-weight:700">${(hj.em_recebimento||{}).count||0}</td>
+        <td style="color:#22C55E;font-weight:700">${(hj.recebido||{}).count||0}</td>
+        <td style="color:#6B7280;font-weight:700">${(hj.fechado||{}).count||0}</td>
+        <td style="font-weight:700">${info.total_paletes_dia||0}</td>
+      </tr>`;
+    }).join("");
+
+  // Tabela de detalhe
+  const detRows = linhas.map(l=>`<tr>
+    <td>${l.receiptkey}</td><td>${l.deposito}</td>
+    <td style="max-width:120px;overflow:hidden;text-overflow:ellipsis">${l.supplier_name}</td>
+    <td>${l.status}</td><td>${l.sku}</td><td>${l.nf}</td>
+    <td>${l.vencimento}</td>
+    <td style="text-align:right">${_fmt(l.qty_previsto)}</td>
+    <td style="text-align:right"><strong>${_fmt(l.qty_recebido)}</strong></td>
+    <td>${l.uom}</td>
+    <td style="text-align:center">${l.pal_fechado||"—"}</td>
+    <td style="text-align:center">${l.pal_fracao?"frac.":"—"}</td>
+    <td>${l.data_receb}</td>
+    <td>${l.editwho}</td>
+  </tr>`).join("");
+
+  const win = window.open("","_blank");
+  win.document.write(`<!DOCTYPE html><html><head>
+  <meta charset="UTF-8"><title>Relatório Recebimento BURN RJ — ${dataFiltro}</title>
+  <style>
+    body{font-family:Arial,sans-serif;font-size:10px;padding:20px;color:#1E1B4B}
+    h1{color:#0D2580;font-size:16px;margin:0}
+    h2{color:#0D2580;font-size:12px;margin:16px 0 6px;border-bottom:2px solid #C7D2FE;padding-bottom:4px}
+    .sub{color:#6B7280;font-size:10px;margin:2px 0 12px}
+    .cards{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+    table{width:100%;border-collapse:collapse;margin-bottom:16px}
+    th{background:#0D2580;color:#fff;padding:6px 8px;text-align:left;font-size:9px;white-space:nowrap}
+    td{padding:4px 8px;border-bottom:1px solid #EEF2FF;font-size:9px;vertical-align:middle}
+    tr:nth-child(even) td{background:#F8FAFF}
+    @media print{@page{size:landscape;margin:10mm} .no-print{display:none}}
+  </style>
+  </head><body>
+  <h1>Gerenciamento de Rotina Logística BURN RJ</h1>
+  <div class="sub">Painel de Recebimento — Produto Acabado &nbsp;|&nbsp; Data: <strong>${dataFiltro}</strong> &nbsp;|&nbsp; Gerado: ${geradoEm}</div>
+
+  <h2>Dashboard Geral</h2>
+  <div class="cards">${dashCards}</div>
+
+  <h2>Resumo por Depósito (Hoje)</h2>
+  <table><thead><tr>
+    <th>Dep.</th><th>Expedidor</th><th>Pendente</th><th>Em Rec.</th><th>Recebido</th><th>Fechado</th><th>Paletes</th>
+  </tr></thead><tbody>${depRows}</tbody></table>
+
+  <h2>Detalhe Completo dos Recebimentos</h2>
+  <table><thead><tr>
+    <th>Recebimento</th><th>Dep.</th><th>Expedidor</th><th>Status</th><th>SKU</th>
+    <th>Ref/NF</th><th>Vencimento</th><th>Qtd Prev.</th><th>Qtd Rec.</th><th>UOM</th>
+    <th>Pal.Fec.</th><th>Frac.</th><th>Data Receb.</th><th>Atualiz. por</th>
+  </tr></thead><tbody>${detRows}</tbody></table>
+
+  <script>window.print();<\/script>
+  </body></html>`);
+  win.document.close();
+  toast("PDF gerado para impressão", "success");
 }
 
 /* ══════════════════════════════════════════════════════════════
