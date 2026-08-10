@@ -594,16 +594,16 @@ class ReceiptCollector:
             max_base = BASE_MINIMO_2026
 
         if not self._first_scan_done:
-            # Bootstrap: janela ampla para cobrir o gap entre exports e hoje
-            scan_start = max(1, max_base - 100)
+            # Bootstrap: janela ampla para cobrir gap entre exports (mai/26) e hoje
+            scan_start = max(1, max_base - 300)
             scan_end   = max_base + 1500
             self._first_scan_done = True
-            log.info(f"Range scan BOOTSTRAP: bases {scan_start}–{scan_end}")
+            log.info(f"Range scan BOOTSTRAP: bases {scan_start}-{scan_end}")
         else:
-            # Incremental: só arredores do máximo conhecido
-            scan_start = max(1, max_base - 20)
+            # Incremental: janela traseira de 300 — bases do mesmo dia podem variar 200+
+            scan_start = max(1, max_base - 300)
             scan_end   = max_base + 50
-            log.info(f"Range scan incremental: bases {scan_start}–{scan_end}")
+            log.info(f"Range scan incremental: bases {scan_start}-{scan_end}")
 
         found = 0
         for base in range(scan_end, scan_start - 1, -1):  # mais recente → mais antigo
