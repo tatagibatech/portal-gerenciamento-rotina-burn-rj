@@ -560,6 +560,70 @@ class ReceiptCollector:
         log.info(f"Descoberta: {len(keys)} chaves encontradas.")
         return keys
 
+    def _discover_from_range_scan(self) -> set:
+        """
+        Varre receiptkeys sequenciais próximas ao maior base conhecido.
+        Estratégia: testa sub=1 primeiro — se 404, pula o base (eficiente).
+        Se sub=1 existe, continua até 5 subs consecutivos sem resultado.
+        Cobre ±300 bases do último base conhecido (~20–40 s na primeira execução).
+        """
+        keys = set()
+
+        # Maior base numérico entre as chaves conhecidas
+        max_base = 0
+        for rk in self._known_keys:
+            try:
+                b = int(rk.split(".")[0])
+                if b > max_base:
+                    max_base = b
+            except (ValueError, IndexError):
+                pass
+
+        if max_base == 0:
+            # Nenhuma chave conhecida — ponto de partida conservador (agosto 2026)
+            max_base = 76700
+
+        scan_start = max(1, max_base - 300)
+        scan_end   = max_base + 50
+        log.info(f"Range scan: bases {scan_start}–{scan_end}")
+
+        found = 0
+        for base in range(scan_end, scan_start - 1, -1):   # mais recente → mais antigo
+            # Primeiro testa sub=1; se 404, pula o base inteiro (custo: 1 chamada)
+            rk1 = f"{base}.1"
+            try:
+                r = self._client.get(f"advancedshipnotice/{rk1}", timeout=8)
+            except Exception:
+                continue
+
+            if r.status_code != 200:
+                continue
+
+            # sub=1 existe — adiciona e continua procurando subs maiores
+            keys.add(rk1)
+            found += 1
+
+            consec_miss = 0
+            for sub in range(2, 31):
+                rk = f"{base}.{sub}"
+                try:
+                    r2 = self._client.get(f"advancedshipnotice/{rk}", timeout=8)
+                    if r2.status_code == 200:
+                        keys.add(rk)
+                        found += 1
+                        consec_miss = 0
+                    else:
+                        consec_miss += 1
+                        if consec_miss >= 3:
+                            break
+                except Exception:
+                    consec_miss += 1
+                    if consec_miss >= 3:
+                        break
+
+        log.info(f"Range scan concluído: {found} chaves descobertas.")
+        return keys
+
     def _discover_from_stages(self):
         """
         Busca em cada STG.PA.* por itens com lottable01 contendo receiptkey.
@@ -604,9 +668,10 @@ class ReceiptCollector:
         log.info("Iniciando refresh dos recebimentos PA...")
         try:
             # 1. Descobrir novas chaves
-            keys_exports = self._discover_from_exports()
-            keys_stages  = self._discover_from_stages()
-            all_keys = keys_exports | keys_stages | self._known_keys
+            keys_exports    = self._discover_from_exports()
+            keys_stages     = self._discover_from_stages()
+            keys_range_scan = self._discover_from_range_scan()
+            all_keys = keys_exports | keys_stages | keys_range_scan | self._known_keys
 
             new_receipts = {}
 
