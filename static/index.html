@@ -798,12 +798,12 @@ async function abrirDetalhe(deposito, status, bucket) {
       if (!_modalSupplier && rec.supplier_name) _modalSupplier = rec.supplier_name;
       for (const linha of (rec.linhas||[])) {
         _detalheItems.push({
+          ...linha,
           receiptkey:    rec.receiptkey,
           externkey:     rec.externkey,
           supplier_name: rec.supplier_name || "",
           editwho:       rec.editwho || "",
           deposito:      rec.deposito || "",
-          ...linha,
           data_criacao:  rec.data_criacao,
           status_receipt: rec.status,
           paletes_rec:   rec.paletes,
@@ -893,9 +893,19 @@ function renderDetail(){
       <h3>Nenhum dado encontrado</h3></td></tr>`;
   } else {
     tbody.innerHTML = page.map(it => {
-      const palRec = it.pal_recebido != null ? it.pal_recebido : 0;
-      const palInt = palRec > 0 ? Math.floor(palRec) : 0;
-      const palFra = palRec > 0 && (palRec - palInt) > 0.01 ? 1 : 0;
+      let palInt = 0, palFra = 0;
+      const qr = it.qty_recebido || 0;
+      const qp = it.qty_previsto || 0;
+      if (it.pal_recebido != null && it.pal_recebido > 0) {
+        // tem qty_por_palete cadastrado no WMS
+        const palRec = it.pal_recebido;
+        palInt = Math.floor(palRec);
+        palFra = (palRec - palInt) > 0.01 ? 1 : 0;
+      } else if (qr > 0 && qp > 0) {
+        // fallback: qty_recebido igual à embalagem = fechado, menor/maior = fração
+        if (Math.abs(qr - qp) < 0.001) palInt = 1;
+        else palFra = 1;
+      }
       const stColor = STATUS_COLORS[it.status] || "var(--muted)";
       return `<tr>
         <td class="td-sku">${it.receiptkey||"—"}</td>
