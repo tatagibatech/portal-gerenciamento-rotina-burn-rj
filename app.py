@@ -198,6 +198,29 @@ def api_debug_wms_list():
     return jsonify(resultado)
 
 
+@app.get("/api/debug-pack/<packkey>")
+def api_debug_pack(packkey):
+    """Retorna todos os campos brutos do cadastro de embalagem (pack) do WMS."""
+    from receipt_collector import WMSClient
+    client = WMSClient()
+    r = client.get(f"packs/{packkey}", timeout=20)
+    if r.status_code == 200:
+        raw = r.json()
+        # Calcular qpp como o sistema faz
+        ti = float(raw.get("palletti") or 0)
+        hi = float(raw.get("pallethi") or 0)
+        qty = float(raw.get("qty") or 0)
+        qpp_calc = ti * hi if (ti > 0 and hi > 0) else (qty if qty > 0 else 0)
+        return jsonify({
+            "packkey":    packkey,
+            "status_wms": r.status_code,
+            "qpp_calculado": qpp_calc,
+            "formula":    f"palletti({ti}) × pallethi({hi}) = {ti*hi}" if (ti > 0 and hi > 0) else f"fallback qty={qty}",
+            "campos_raw": raw,
+        })
+    return jsonify({"status_wms": r.status_code, "body": r.text[:500]}), 404
+
+
 @app.get("/api/debug-receipt")
 def api_debug_receipt():
     """Diagnóstico: campos chave de até 5 receipts — ajuda a identificar deposito/fromloc/toloc."""
