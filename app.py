@@ -272,6 +272,43 @@ def api_debug_receipt():
     return jsonify(amostra)
 
 
+@app.post("/api/webhook-asn")
+def api_webhook_asn():
+    """
+    Webhook para receber notificações do ION DataFlow AdvanceShipNotice.
+
+    O ION DataFlow DataGatewayPRD_AdvanceShipNotice dispara quando o WMS envia
+    um SyncAdvanceShipNotice (criação ou fechamento de ASN), chama a API WMS para
+    obter o JSON completo da ASN e faz POST aqui com esse JSON no body.
+
+    Basta configurar o ConnectionPoint DataGatewayPRD no ION Desk apontando para:
+      https://painel-burn-rj.onrender.com/api/webhook-asn
+
+    Para receber criações (além de fechamentos), remova o filtro Code=Canceled/Closed
+    no DataFlow ou crie um DataFlow paralelo com actionCode=Add sem filtro de status.
+    """
+    try:
+        body = request.get_json(force=True, silent=True) or {}
+        receiptkey = (
+            body.get("receiptkey") or
+            body.get("ReceiptKey") or
+            body.get("receiptKey") or
+            ""
+        ).strip()
+        if not receiptkey:
+            log.warning(f"webhook-asn recebido sem receiptkey: {str(body)[:200]}")
+            return jsonify({"ok": False, "msg": "receiptkey ausente no body"}), 400
+
+        rec = collector.fetch_and_store(receiptkey)
+        if rec:
+            log.info(f"webhook-asn: ASN {receiptkey} indexada via DataFlow (dep={rec.get('deposito')}, status={rec.get('status')}).")
+            return jsonify({"ok": True, "receiptkey": receiptkey, "deposito": rec.get("deposito"), "status": rec.get("status")})
+        return jsonify({"ok": False, "msg": f"ASN {receiptkey} não encontrada no WMS"}), 404
+    except Exception as e:
+        log.error(f"Erro em /api/webhook-asn: {e}")
+        return jsonify({"erro": str(e)}), 500
+
+
 @app.get("/api/config-check")
 def api_config_check():
     """Diagnóstico de configuração — mostra prefixo das credenciais (não expõe valores completos)."""

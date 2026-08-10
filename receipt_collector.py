@@ -565,76 +565,107 @@ class ReceiptCollector:
         """
         Varre receiptkeys sequenciais para descobrir ASNs de todos os depósitos.
 
-        Estratégia eficiente: testa sub=1 primeiro — se 404, pula o base inteiro
-        (apenas 1 chamada por base vazio). Se encontrar sub=1, continua até 3 404s
-        consecutivos.
+        Problema real observado: alguns bases não têm sub=1 — os subs começam em
+        valores maiores (ex: 76802 começa no sub=8, 76814 no sub=11). Nesses casos
+        apenas testar sub=1 pula o base inteiro.
+
+        Estratégia híbrida:
+          1. Sonda sub=1 (padrão — rápido, 1 chamada por base vazio)
+          2. Se sub=1 retorna 404, sonda os subs mínimos conhecidos desse base
+             (preenchidos via webhook ou scan anterior)
+          3. Se qualquer sonda retorna 200, faz varredura completa de subs 1-40
+             com early-exit após 5 misses CONSECUTIVOS além do sub máximo conhecido.
 
         Janela:
-          • Bootstrap (primeira execução / sem cache): max_base + 1500
-            Garante cobertura mesmo quando exports retornam dados antigos.
+          • Bootstrap (primeira execução): max_base + 1500
           • Incremental (ciclos seguintes): max_base + 50
-            Descobre apenas chaves novas desde o último refresh.
         """
         keys = set()
 
-        # Maior base numérico dentre known_keys + já descobertos neste ciclo
         all_refs = self._known_keys | (already_discovered or set())
         max_base = 0
-        for rk in all_refs:
-            try:
-                b = int(rk.split(".")[0])
-                if b > max_base:
-                    max_base = b
-            except (ValueError, IndexError):
-                pass
 
-        # Garante mínimo razoável para 2026 caso exports só retornem registros antigos
+        # Mapa base → conjunto de subs já conhecidos (para usar como âncoras de sonda)
+        base_known_subs: dict[int, set[int]] = defaultdict(set)
+        for rk in all_refs:
+            parts = rk.split(".")
+            if len(parts) >= 2:
+                try:
+                    b = int(parts[0]); s = int(parts[1])
+                    base_known_subs[b].add(s)
+                    if b > max_base:
+                        max_base = b
+                except (ValueError, IndexError):
+                    pass
+
         BASE_MINIMO_2026 = 75800
         if max_base < BASE_MINIMO_2026:
             max_base = BASE_MINIMO_2026
 
         if not self._first_scan_done:
-            # Bootstrap: janela ampla para cobrir gap entre exports (mai/26) e hoje
             scan_start = max(1, max_base - 300)
             scan_end   = max_base + 1500
             self._first_scan_done = True
             log.info(f"Range scan BOOTSTRAP: bases {scan_start}-{scan_end}")
         else:
-            # Incremental: janela traseira de 300 — bases do mesmo dia podem variar 200+
             scan_start = max(1, max_base - 300)
             scan_end   = max_base + 50
             log.info(f"Range scan incremental: bases {scan_start}-{scan_end}")
 
         found = 0
-        for base in range(scan_end, scan_start - 1, -1):  # mais recente → mais antigo
-            rk1 = f"{base}.1"
-            try:
-                r = self._client.get(f"advancedshipnotice/{rk1}", timeout=8)
-            except Exception:
-                continue
+        for base in range(scan_end, scan_start - 1, -1):
+            known_subs = sorted(base_known_subs.get(base, set()))
+            # Sondas: sub=1 sempre, mais o menor sub conhecido (quando ≠ 1)
+            probe_subs = [1]
+            if known_subs and known_subs[0] > 1:
+                probe_subs.append(known_subs[0])
+            if known_subs:
+                # Tenta também um sub acima do maior conhecido (para capturar novos)
+                next_sub = known_subs[-1] + 1
+                if next_sub not in probe_subs:
+                    probe_subs.append(next_sub)
 
-            if r.status_code != 200:
-                continue
+            anchor_sub = None
+            for ps in probe_subs:
+                rk_ps = f"{base}.{ps}"
+                try:
+                    r = self._client.get(f"advancedshipnotice/{rk_ps}", timeout=8)
+                except Exception:
+                    continue
+                if r.status_code == 200:
+                    keys.add(rk_ps)
+                    found += 1
+                    anchor_sub = ps
+                    break
 
-            keys.add(rk1)
-            found += 1
+            if anchor_sub is None:
+                continue  # base sem receipts nas sondas — pula
 
-            consec_miss = 0
-            for sub in range(2, 31):
+            # Varredura completa de subs 1 até max(40, anchor+20)
+            max_sub_scan = max(40, anchor_sub + 20)
+            consec_miss  = 0
+            max_known_sub = known_subs[-1] if known_subs else anchor_sub
+            for sub in range(1, max_sub_scan + 1):
                 rk = f"{base}.{sub}"
+                if rk in keys:
+                    consec_miss = 0
+                    continue
                 try:
                     r2 = self._client.get(f"advancedshipnotice/{rk}", timeout=8)
                     if r2.status_code == 200:
                         keys.add(rk)
                         found += 1
                         consec_miss = 0
+                        if sub > max_known_sub:
+                            max_known_sub = sub
                     else:
                         consec_miss += 1
-                        if consec_miss >= 3:
+                        # Não quebra antes de passar todos os subs conhecidos + âncora
+                        if consec_miss >= 5 and sub > max(anchor_sub, max_known_sub):
                             break
                 except Exception:
                     consec_miss += 1
-                    if consec_miss >= 3:
+                    if consec_miss >= 5 and sub > max(anchor_sub, max_known_sub):
                         break
 
         log.info(f"Range scan concluído: {found} chaves descobertas.")
