@@ -166,6 +166,16 @@ main{padding:20px 24px 40px;max-width:1600px;margin:0 auto}
   background:rgba(255,255,255,.2);color:#fff;font-size:11px;
   padding:2px 8px;border-radius:10px;font-weight:600
 }
+.dep-totalizador{
+  margin-top:8px;padding:5px 10px;
+  background:rgba(0,0,0,.25);border-radius:6px;
+  font-size:11px;color:rgba(255,255,255,.85);text-align:center;
+}
+.dep-totalizador strong{color:#fff}
+.tot-pend{color:#f59e0b}
+.tot-er{color:#60a5fa}
+.tot-rec{color:#34d399}
+.tot-fec{color:rgba(255,255,255,.55)}
 
 /* Status boxes dentro do card */
 .dep-status-grid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--border)}
@@ -701,6 +711,19 @@ function renderDepCard(dep, info, totalHoje){
     </div>`;
   }).join("");
 
+  const cntPend = (hoje["pendente"]||{}).count || 0;
+  const cntER   = (hoje["em_recebimento"]||{}).count || 0;
+  const cntRec  = (hoje["recebido"]||{}).count || 0;
+  const cntFec  = (hoje["fechado"]||{}).count || 0;
+  const partes  = [];
+  if (cntPend) partes.push(`<span class="tot-pend">${cntPend} pend.</span>`);
+  if (cntER)   partes.push(`<span class="tot-er">${cntER} em rec.</span>`);
+  if (cntRec)  partes.push(`<span class="tot-rec">${cntRec} rec.</span>`);
+  if (cntFec)  partes.push(`<span class="tot-fec">${cntFec} fec.</span>`);
+  const totalizador = total > 0
+    ? `<div class="dep-totalizador">${partes.join(" &bull; ")} &nbsp;|&nbsp; <strong>Total: ${total} ASNs</strong></div>`
+    : "";
+
   const depLabel = info.supplier_name || info.nome || dep;
   return `<div class="dep-card">
     <div class="dep-header">
@@ -711,6 +734,7 @@ function renderDepCard(dep, info, totalHoje){
       <div class="dep-paletes-badge">🔷 ${paletes} pal.</div>
     </div>
     <div class="dep-status-grid">${boxes}</div>
+    ${totalizador}
   </div>`;
 }
 
