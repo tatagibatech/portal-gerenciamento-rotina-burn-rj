@@ -462,6 +462,7 @@ class ReceiptCollector:
         self._erro       = None
         self._thread     = None
         self._running    = False
+        self._first_scan_done = False   # controla janela ampla no bootstrap
         self._load_cache()
 
     # ------------------------------------------------------------------ cache
@@ -560,18 +561,26 @@ class ReceiptCollector:
         log.info(f"Descoberta: {len(keys)} chaves encontradas.")
         return keys
 
-    def _discover_from_range_scan(self) -> set:
+    def _discover_from_range_scan(self, already_discovered: set | None = None) -> set:
         """
-        Varre receiptkeys sequenciais próximas ao maior base conhecido.
-        Estratégia: testa sub=1 primeiro — se 404, pula o base (eficiente).
-        Se sub=1 existe, continua até 5 subs consecutivos sem resultado.
-        Cobre ±300 bases do último base conhecido (~20–40 s na primeira execução).
+        Varre receiptkeys sequenciais para descobrir ASNs de todos os depósitos.
+
+        Estratégia eficiente: testa sub=1 primeiro — se 404, pula o base inteiro
+        (apenas 1 chamada por base vazio). Se encontrar sub=1, continua até 3 404s
+        consecutivos.
+
+        Janela:
+          • Bootstrap (primeira execução / sem cache): max_base + 1500
+            Garante cobertura mesmo quando exports retornam dados antigos.
+          • Incremental (ciclos seguintes): max_base + 50
+            Descobre apenas chaves novas desde o último refresh.
         """
         keys = set()
 
-        # Maior base numérico entre as chaves conhecidas
+        # Maior base numérico dentre known_keys + já descobertos neste ciclo
+        all_refs = self._known_keys | (already_discovered or set())
         max_base = 0
-        for rk in self._known_keys:
+        for rk in all_refs:
             try:
                 b = int(rk.split(".")[0])
                 if b > max_base:
@@ -579,17 +588,25 @@ class ReceiptCollector:
             except (ValueError, IndexError):
                 pass
 
-        if max_base == 0:
-            # Nenhuma chave conhecida — ponto de partida conservador (agosto 2026)
-            max_base = 76700
+        # Garante mínimo razoável para 2026 caso exports só retornem registros antigos
+        BASE_MINIMO_2026 = 75800
+        if max_base < BASE_MINIMO_2026:
+            max_base = BASE_MINIMO_2026
 
-        scan_start = max(1, max_base - 300)
-        scan_end   = max_base + 50
-        log.info(f"Range scan: bases {scan_start}–{scan_end}")
+        if not self._first_scan_done:
+            # Bootstrap: janela ampla para cobrir o gap entre exports e hoje
+            scan_start = max(1, max_base - 100)
+            scan_end   = max_base + 1500
+            self._first_scan_done = True
+            log.info(f"Range scan BOOTSTRAP: bases {scan_start}–{scan_end}")
+        else:
+            # Incremental: só arredores do máximo conhecido
+            scan_start = max(1, max_base - 20)
+            scan_end   = max_base + 50
+            log.info(f"Range scan incremental: bases {scan_start}–{scan_end}")
 
         found = 0
-        for base in range(scan_end, scan_start - 1, -1):   # mais recente → mais antigo
-            # Primeiro testa sub=1; se 404, pula o base inteiro (custo: 1 chamada)
+        for base in range(scan_end, scan_start - 1, -1):  # mais recente → mais antigo
             rk1 = f"{base}.1"
             try:
                 r = self._client.get(f"advancedshipnotice/{rk1}", timeout=8)
@@ -599,7 +616,6 @@ class ReceiptCollector:
             if r.status_code != 200:
                 continue
 
-            # sub=1 existe — adiciona e continua procurando subs maiores
             keys.add(rk1)
             found += 1
 
@@ -670,7 +686,8 @@ class ReceiptCollector:
             # 1. Descobrir novas chaves
             keys_exports    = self._discover_from_exports()
             keys_stages     = self._discover_from_stages()
-            keys_range_scan = self._discover_from_range_scan()
+            # Passa exports+stages para o range scan usar como referência de max_base
+            keys_range_scan = self._discover_from_range_scan(keys_exports | keys_stages)
             all_keys = keys_exports | keys_stages | keys_range_scan | self._known_keys
 
             new_receipts = {}
