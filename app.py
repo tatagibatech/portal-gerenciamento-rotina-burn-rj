@@ -128,49 +128,72 @@ def api_status():
 
 @app.get("/api/debug-wms-list")
 def api_debug_wms_list():
-    """Testa vários métodos de listagem de ASNs de hoje."""
+    """Testa métodos de listagem de ASNs — descobre qual endpoint funciona."""
     from receipt_collector import WMSClient
-    from datetime import date, timedelta
+    from datetime import date
     client = WMSClient()
     dt = date.today().isoformat()
     resultado = {}
 
-    # GET com params de data
-    for param in ("receiptdate", "adddate"):
+    # 1. GET /advancedshipnotice sem filtro de data (apenas recordcount)
+    for path in ("advancedshipnotice", "receipts"):
         try:
-            r = client.get("receipts", params={"storerkey": "BURN", param: dt, "recordcount": 20}, timeout=30)
-            resultado[f"GET_receipts_{param}"] = {"status": r.status_code, "body": r.text[:300]}
+            r = client.get(path, params={"storerkey": "BURN", "recordcount": 10}, timeout=30)
+            keys, sample = [], []
+            if r.status_code == 200:
+                data = r.json()
+                if isinstance(data, list):
+                    keys = [x.get("receiptkey") for x in data[:5]]
+                    sample = [{k: v for k,v in x.items() if "date" in k.lower() or k in ("receiptkey","status","supplierCode","SupplierCode")} for x in data[:2]]
+            resultado[f"GET_{path}_nofilter"] = {"status": r.status_code, "keys": keys, "sample": sample, "body": r.text[:300] if r.status_code != 200 else ""}
         except Exception as e:
-            resultado[f"GET_receipts_{param}"] = {"erro": str(e)}
+            resultado[f"GET_{path}_nofilter"] = {"erro": str(e)}
 
-    # POST showreceiptlist
-    for path in ("receipts/showreceiptlist", "advancedshipnotice/showadvancedshipnoticelist"):
-        for body in (
-            {"storerkey": "BURN", "adddate": dt},
-            {"storerkey": "BURN", "receiptdate": dt},
-            {"storerkey": "BURN"},
-        ):
-            label = f"POST_{path}__{list(body.keys())}"
+    # 2. GET por status aberto (sem data)
+    for status_val in ("5", "9", "3"):
+        try:
+            r = client.get("advancedshipnotice", params={"storerkey": "BURN", "status": status_val, "recordcount": 10}, timeout=30)
+            keys = []
+            if r.status_code == 200 and isinstance(r.json(), list):
+                keys = [x.get("receiptkey") for x in r.json()[:10]]
+            resultado[f"GET_asn_status_{status_val}"] = {"status": r.status_code, "keys": keys, "body": r.text[:200] if r.status_code != 200 else ""}
+        except Exception as e:
+            resultado[f"GET_asn_status_{status_val}"] = {"erro": str(e)}
+
+    # 3. GET por editdate (data da atualização)
+    for path in ("advancedshipnotice", "receipts"):
+        for param in ("editdate", "lastmoddate", "updatedate", "modifieddate"):
             try:
-                r = client.post(path, body=body, timeout=30)
+                r = client.get(path, params={"storerkey": "BURN", param: dt, "recordcount": 10}, timeout=15)
                 keys = []
-                if r.status_code == 200:
-                    data = r.json()
-                    if isinstance(data, list):
-                        keys = [x.get("receiptkey") for x in data[:10]]
-                resultado[label] = {"status": r.status_code, "keys": keys, "body_sample": r.text[:200]}
+                if r.status_code == 200 and isinstance(r.json(), list):
+                    keys = [x.get("receiptkey") for x in r.json()[:5]]
+                if r.status_code != 405:  # só mostra se não for 405
+                    resultado[f"GET_{path}_{param}"] = {"status": r.status_code, "keys": keys, "body": r.text[:200]}
             except Exception as e:
-                resultado[label] = {"erro": str(e)}
+                resultado[f"GET_{path}_{param}"] = {"erro": str(e)}
 
-    # Exports com limite maior
+    # 4. Exports — ver último evento e total
     try:
-        r = client.get("exports", params={"type": "ASNCOMPLETED", "restrictrowsto": 10}, timeout=30)
+        r = client.get("exports", params={"type": "ASNCOMPLETED", "restrictrowsto": 5}, timeout=30)
         sample = []
         if r.status_code == 200 and isinstance(r.json(), list):
-            sample = [{"key1": x.get("key1"), "key2": x.get("key2"), "adddate": x.get("adddate", x.get("createdate", ""))} for x in r.json()[:5]]
-        resultado["exports_sample_10"] = {"status": r.status_code, "sample": sample}
+            sample = [{"key1": x.get("key1","")[:30], "adddate": x.get("adddate","")} for x in r.json()]
+        resultado["exports_ASNCOMPLETED_5"] = {"status": r.status_code, "sample": sample}
     except Exception as e:
-        resultado["exports_sample_10"] = {"erro": str(e)}
+        resultado["exports_ASNCOMPLETED_5"] = {"erro": str(e)}
+
+    # 5. Inventário nos stages (scan direto)
+    try:
+        r = client.post("inventorybalance/showinventorybalancelist",
+                        params={"recordcount": 5, "loc": "STG.PA.309.001", "owner": "BURN"}, timeout=30)
+        fields = []
+        if r.status_code == 200 and isinstance(r.json(), list) and r.json():
+            fields = list(r.json()[0].keys())
+            sample = [{k: v for k, v in r.json()[0].items() if v and v != "0" and v != ""}]
+        resultado["stage_309_sample"] = {"status": r.status_code, "fields": fields[:30], "sample": sample if r.status_code == 200 else r.text[:200]}
+    except Exception as e:
+        resultado["stage_309_sample"] = {"erro": str(e)}
 
     return jsonify(resultado)
 
