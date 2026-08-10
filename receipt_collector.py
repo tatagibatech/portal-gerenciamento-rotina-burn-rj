@@ -219,14 +219,12 @@ def _deposito_from_receiptkey(receiptkey: str) -> str | None:
 
 
 def _qty_por_palete(pack: dict) -> float:
-    """Retorna quantidade de unidades por palete a partir do cadastro de embalagem."""
+    """Retorna qty/palete usando palletti × pallethi do cadastro de embalagem (packs API).
+    Retorna 0 se o pack não tiver as dimensões de palete configuradas no WMS."""
     ti = float(pack.get("palletti") or 0)
     hi = float(pack.get("pallethi") or 0)
     if ti > 0 and hi > 0:
         return ti * hi
-    qty = float(pack.get("qty") or 0)
-    if qty > 0:
-        return qty
     return 0.0
 
 
@@ -238,17 +236,21 @@ def _split_paletes(valor: float):
 
 def _calcula_paletes(details: list, pack_cache: dict) -> dict:
     """
-    Calcula paletes previstos e recebidos.
+    Calcula paletes previstos e recebidos usando a API de embalagens (packs).
 
-    Recebidos: cada linha com qtyreceived > 0 = 1 palete (o operador escaneia 1 palete
-    por linha no WMS). Previstos: qtyexpected_total / qpp. Se pack não configurado
-    (palletti=0, pallethi=0), qpp é estimado pela mediana das quantidades recebidas.
+    Fluxo principal (pack configurado no WMS):
+      qpp = palletti × pallethi  (via GET /packs/{packkey})
+      pal_prev = total_qtyexpected / qpp
+      pal_rec  = total_qtyreceived / qpp
+
+    Fallback (pack sem dimensões de palete configuradas no WMS):
+      qpp estimado = mediana das qtyreceived das linhas recebidas
+      pal_rec      = contagem de linhas com qtyreceived > 0 (1 linha = 1 palete escaneado)
     """
     total_prev     = 0.0
     total_rec      = 0.0
-    pal_rec        = 0      # contagem de linhas com qtyreceived > 0 = paletes recebidos
-    qpp_global     = 0.0
-    qtys_recebidas = []
+    qpp_global     = 0.0     # qpp do pack (palletti × pallethi)
+    qtys_recebidas = []      # para estimativa de qpp quando pack não configurado
 
     for d in details:
         qty_prev = float(d.get("qtyexpected") or 0)
@@ -256,44 +258,54 @@ def _calcula_paletes(details: list, pack_cache: dict) -> dict:
         total_prev += qty_prev
         total_rec  += qty_rec
 
+        # Lê qpp do cadastro de embalagem (pack) via cache já populado pela API
         packkey = d.get("packkey") or ""
         if packkey and qpp_global == 0.0:
             pack = pack_cache.get(packkey, {})
-            qpp  = _qty_por_palete(pack)
+            qpp  = _qty_por_palete(pack)   # palletti × pallethi — 0 se não configurado
             if qpp > 0:
                 qpp_global = qpp
 
         if qty_rec > 0:
-            pal_rec += 1
             qtys_recebidas.append(qty_rec)
 
-    # Se pack não tem qpp configurado, estima pela mediana das linhas recebidas
-    if qpp_global == 0.0 and qtys_recebidas:
+    # Pack configurado com palletti × pallethi → usa diretamente
+    if qpp_global > 0:
+        pal_prev_f = round(total_prev / qpp_global, 2)
+        pal_rec_f  = round(total_rec  / qpp_global, 2)
+        qpp_source = "pack"
+    elif qtys_recebidas:
+        # Pack sem configuração de palete: estima qpp pela mediana das qtds recebidas
         qtys_sorted = sorted(qtys_recebidas)
         qpp_global  = qtys_sorted[len(qtys_sorted) // 2]
-
-    # Paletes previstos = total previsto / qpp
-    pal_prev_f = round(total_prev / qpp_global, 2) if qpp_global > 0 else 0.0
+        pal_prev_f  = round(total_prev / qpp_global, 2) if qpp_global > 0 else 0.0
+        pal_rec_f   = float(len(qtys_recebidas))        # 1 linha = 1 palete escaneado
+        qpp_source  = "estimado"
+    else:
+        pal_prev_f = 0.0
+        pal_rec_f  = 0.0
+        qpp_source = "indisponivel"
 
     prev_int, prev_frac = _split_paletes(pal_prev_f)
-    rec_int,  rec_frac  = _split_paletes(float(pal_rec))
-    diferenca = max(0.0, round(pal_prev_f - pal_rec, 2))
+    rec_int,  rec_frac  = _split_paletes(pal_rec_f)
+    diferenca = max(0.0, round(pal_prev_f - pal_rec_f, 2))
 
     return {
         "total_previsto":       round(total_prev, 2),
         "total_recebido":       round(total_rec, 2),
         "qpp":                  round(qpp_global, 2),
+        "qpp_source":           qpp_source,
         # Previstos
         "paletes_previstos":    pal_prev_f,
         "paletes_inteiros":     prev_int,
         "paletes_fracao":       prev_frac,
         "paletes_total":        prev_int + prev_frac,
         # Recebidos
-        "paletes_recebidos":    pal_rec,
+        "paletes_recebidos":    pal_rec_f,
         "paletes_rec_inteiros": rec_int,
         "paletes_rec_fracao":   rec_frac,
         "paletes_rec_total":    rec_int + rec_frac,
-        # Em recebimento (diferença previsto - recebido)
+        # Em recebimento (diferença previsto − recebido)
         "diferenca_paletes":    diferenca,
     }
 
