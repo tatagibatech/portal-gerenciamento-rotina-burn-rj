@@ -198,6 +198,20 @@ def api_debug_wms_list():
     return jsonify(resultado)
 
 
+@app.get("/api/debug-asn-raw/<receiptkey>")
+def api_debug_asn_raw(receiptkey):
+    """Retorna todos os campos brutos do cabeçalho da ASN (sem expandir detalhes)."""
+    from receipt_collector import WMSClient
+    client = WMSClient()
+    r = client.get(f"advancedshipnotice/{receiptkey}", timeout=30)
+    if r.status_code == 200:
+        raw = r.json()
+        # Remove campos muito grandes para leitura
+        resumo = {k: v for k, v in raw.items() if k not in ("receiptdetails", "fieldOverrides", "hrefs", "facility", "link")}
+        return jsonify({"status_wms": 200, "campos": resumo})
+    return jsonify({"status_wms": r.status_code, "body": r.text[:500]}), 404
+
+
 @app.get("/api/debug-pack/<packkey>")
 def api_debug_pack(packkey):
     """Retorna todos os campos brutos do cadastro de embalagem (pack) do WMS."""
