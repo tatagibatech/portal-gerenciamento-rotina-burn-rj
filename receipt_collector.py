@@ -238,13 +238,17 @@ def _split_paletes(valor: float):
 
 def _calcula_paletes(details: list, pack_cache: dict) -> dict:
     """
-    Calcula paletes PREVISTOS e RECEBIDOS separadamente.
-    Fórmula: paletes = qty / qty_por_palete do cadastro de embalagem (pack).
+    Calcula paletes previstos e recebidos.
+
+    Recebidos: cada linha com qtyreceived > 0 = 1 palete (o operador escaneia 1 palete
+    por linha no WMS). Previstos: qtyexpected_total / qpp. Se pack não configurado
+    (palletti=0, pallethi=0), qpp é estimado pela mediana das quantidades recebidas.
     """
-    total_prev   = 0.0
-    total_rec    = 0.0
-    pal_prev     = 0.0
-    pal_rec      = 0.0
+    total_prev     = 0.0
+    total_rec      = 0.0
+    pal_rec        = 0      # contagem de linhas com qtyreceived > 0 = paletes recebidos
+    qpp_global     = 0.0
+    qtys_recebidas = []
 
     for d in details:
         qty_prev = float(d.get("qtyexpected") or 0)
@@ -253,47 +257,53 @@ def _calcula_paletes(details: list, pack_cache: dict) -> dict:
         total_rec  += qty_rec
 
         packkey = d.get("packkey") or ""
-        pack    = pack_cache.get(packkey, {})
-        qpp     = _qty_por_palete(pack)
+        if packkey and qpp_global == 0.0:
+            pack = pack_cache.get(packkey, {})
+            qpp  = _qty_por_palete(pack)
+            if qpp > 0:
+                qpp_global = qpp
 
-        if qpp > 0:
-            pal_prev += qty_prev / qpp
-            pal_rec  += qty_rec  / qpp
-        else:
-            # pack não configurado — estima 1 palete por linha com quantidade
-            if qty_prev > 0:
-                pal_prev += 1
-            if qty_rec > 0:
-                pal_rec  += 1
+        if qty_rec > 0:
+            pal_rec += 1
+            qtys_recebidas.append(qty_rec)
 
-    prev_int, prev_frac = _split_paletes(pal_prev)
-    rec_int,  rec_frac  = _split_paletes(pal_rec)
-    diferenca = round(pal_prev - pal_rec, 2)
+    # Se pack não tem qpp configurado, estima pela mediana das linhas recebidas
+    if qpp_global == 0.0 and qtys_recebidas:
+        qtys_sorted = sorted(qtys_recebidas)
+        qpp_global  = qtys_sorted[len(qtys_sorted) // 2]
+
+    # Paletes previstos = total previsto / qpp
+    pal_prev_f = round(total_prev / qpp_global, 2) if qpp_global > 0 else 0.0
+
+    prev_int, prev_frac = _split_paletes(pal_prev_f)
+    rec_int,  rec_frac  = _split_paletes(float(pal_rec))
+    diferenca = max(0.0, round(pal_prev_f - pal_rec, 2))
 
     return {
         "total_previsto":       round(total_prev, 2),
         "total_recebido":       round(total_rec, 2),
+        "qpp":                  round(qpp_global, 2),
         # Previstos
-        "paletes_previstos":    round(pal_prev, 2),
+        "paletes_previstos":    pal_prev_f,
         "paletes_inteiros":     prev_int,
         "paletes_fracao":       prev_frac,
         "paletes_total":        prev_int + prev_frac,
         # Recebidos
-        "paletes_recebidos":    round(pal_rec, 2),
+        "paletes_recebidos":    pal_rec,
         "paletes_rec_inteiros": rec_int,
         "paletes_rec_fracao":   rec_frac,
         "paletes_rec_total":    rec_int + rec_frac,
-        # Diferença
+        # Em recebimento (diferença previsto - recebido)
         "diferenca_paletes":    diferenca,
     }
 
 
-TIPO_ORDEM_PRODUCAO = {"10"}  # códigos de receipttype aceitos
+TIPO_ORDEM_PRODUCAO = {"8"}  # API WMS: type=8 = Ordem de Produção (UI mostra "10")
 
 
 def _is_ordem_producao(receipt: dict) -> bool:
-    """Retorna True se a ASN é do tipo Ordem de Produção (receipttype=10)."""
-    tipo = str(receipt.get("receipttype") or receipt.get("type") or
+    """Retorna True se a ASN é do tipo Ordem de Produção (type=8 na API WMS)."""
+    tipo = str(receipt.get("type") or receipt.get("receipttype") or
                receipt.get("receipttypecode") or "").strip()
     return tipo in TIPO_ORDEM_PRODUCAO
 
@@ -596,7 +606,7 @@ class ReceiptCollector:
                     if receipt:
                         # Filtrar: apenas Ordens de Produção (receipttype=10)
                         if not _is_ordem_producao(receipt):
-                            log.debug(f"Receipt {rk} ignorado (tipo {receipt.get('receipttype','?')} ≠ OP).")
+                            log.debug(f"Receipt {rk} ignorado (type={receipt.get('type','?')} ≠ 8/OP).")
                             continue
 
                         # Buscar pack de cada linha via /{warehouse}/packs/{packkey}
@@ -659,7 +669,7 @@ class ReceiptCollector:
             if not receipt:
                 return None
             if not _is_ordem_producao(receipt):
-                log.info(f"ASN {receiptkey} não é Ordem de Produção (tipo={receipt.get('receipttype','?')}) — ignorada.")
+                log.info(f"ASN {receiptkey} não é Ordem de Produção (type={receipt.get('type','?')}) — ignorada.")
                 return None
             for det in (receipt.get("receiptdetails") or []):
                 pk = det.get("packkey") or ""
