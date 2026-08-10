@@ -494,10 +494,12 @@ main{padding:20px 24px 40px;max-width:1600px;margin:0 auto}
               <th>Qtd Prevista</th>
               <th>Qtd Recebida</th>
               <th>UOM</th>
-              <th>Palete Inteiro</th>
-              <th>Palete Fração</th>
+              <th>Palete Fechado</th>
+              <th>Fração</th>
               <th>Data Receb.</th>
               <th>Status</th>
+              <th>Expedidor</th>
+              <th>Atualiz. por</th>
             </tr>
           </thead>
           <tbody id="detailBody"></tbody>
@@ -697,10 +699,11 @@ function renderDepCard(dep, info, totalHoje){
     </div>`;
   }).join("");
 
+  const depLabel = info.supplier_name || info.nome || dep;
   return `<div class="dep-card">
     <div class="dep-header">
       <div>
-        <div class="dep-name">Dep. ${dep} — ${info.nome}</div>
+        <div class="dep-name">DEPOSITO: ${depLabel}</div>
         <div class="dep-zona">${info.zona||""}</div>
       </div>
       <div class="dep-paletes-badge">🔷 ${paletes} pal.</div>
@@ -721,8 +724,9 @@ function renderBacklog(depositos){
       const totalPal = ["pendente","em_recebimento","recebido","fechado"].reduce((s,st) => s + ((bl[st]||{}).paletes||0), 0);
       const anyBl = Object.values(bl).some(v => v.count > 0);
       if (!anyBl) return "";
+      const blLabel = info.supplier_name || info.nome || dep;
       return `<tr>
-        <td class="bl-dep">Dep. ${dep} — ${info.nome}</td>
+        <td class="bl-dep">DEPOSITO: ${blLabel}</td>
         <td>${countBadge(bl.pendente,"pend")}</td>
         <td>${countBadge(bl.em_recebimento,"emrec")}</td>
         <td>${countBadge(bl.recebido,"rec")}</td>
@@ -763,24 +767,32 @@ async function abrirDetalhe(deposito, status, bucket) {
     const r = await fetch(url);
     const data = await r.json();
     _detalheItems = [];
+    let _modalSupplier = "";
     for (const rec of (data.items||[])) {
+      if (!_modalSupplier && rec.supplier_name) _modalSupplier = rec.supplier_name;
       for (const linha of (rec.linhas||[])) {
         _detalheItems.push({
-          receiptkey: rec.receiptkey,
-          externkey:  rec.externkey,
+          receiptkey:    rec.receiptkey,
+          externkey:     rec.externkey,
+          supplier_name: rec.supplier_name || "",
+          editwho:       rec.editwho || "",
+          deposito:      rec.deposito || "",
           ...linha,
-          data_criacao:     rec.data_criacao,
-          status_receipt:   rec.status,
-          paletes_rec:      rec.paletes,
+          data_criacao:  rec.data_criacao,
+          status_receipt: rec.status,
+          paletes_rec:   rec.paletes,
         });
       }
       // Se sem linhas, adicionar linha resumo
       if (!(rec.linhas||[]).length) {
         _detalheItems.push({
-          receiptkey: rec.receiptkey,
-          externkey:  rec.externkey,
+          receiptkey:    rec.receiptkey,
+          externkey:     rec.externkey,
+          supplier_name: rec.supplier_name || "",
+          editwho:       rec.editwho || "",
+          deposito:      rec.deposito || "",
           sku: "—", linha: "—", qty_previsto: 0, qty_recebido: 0, uom: "—",
-          pallet: 0, nf: "—", vencimento: "—", data_receb: "—",
+          pal_recebido: null, nf: "—", vencimento: "—", data_receb: "—",
           data_criacao: rec.data_criacao,
           status_receipt: rec.status,
           paletes_rec: rec.paletes,
@@ -788,9 +800,9 @@ async function abrirDetalhe(deposito, status, bucket) {
       }
     }
 
-    const depNome = deposito ? `Dep. ${deposito}` : "Todos";
+    const depNome = _modalSupplier || (deposito ? `Dep. ${deposito}` : "Todos");
     document.getElementById("modalTitle").textContent =
-      `${depNome} — ${STATUS_LABELS[status]||status}`;
+      `DEPOSITO: ${depNome} — ${STATUS_LABELS[status]||status}`;
     document.getElementById("modalSub").textContent =
       `${bucket === "hoje" ? "Hoje" : "Backlog"} · ${data.total} recebimento(s)`;
 
@@ -834,7 +846,6 @@ function renderDetail(){
   const page  = filtered.slice(start, start + pgSize);
 
   // Sumário do modal
-  const totalPaletes = _detalheItems.reduce((s,it) => s + (it.pallet||0), 0);
   const totalPrev    = _detalheItems.reduce((s,it) => s + (it.qty_previsto||0), 0);
   const totalRec     = _detalheItems.reduce((s,it) => s + (it.qty_recebido||0), 0);
   document.getElementById("modalSummary").innerHTML = `
@@ -852,15 +863,13 @@ function renderDetail(){
   // Tabela
   const tbody = document.getElementById("detailBody");
   if (!page.length) {
-    tbody.innerHTML = `<tr><td colspan="11" class="empty-state"><div class="icon">📭</div>
+    tbody.innerHTML = `<tr><td colspan="13" class="empty-state"><div class="icon">📭</div>
       <h3>Nenhum dado encontrado</h3></td></tr>`;
   } else {
     tbody.innerHTML = page.map(it => {
-      const palInt = it.pallet ? Math.floor(it.pallet) : 0;
-      const palFra = it.pallet && (it.pallet - palInt) > 0.01 ? 1 : 0;
-      const palBadge = palInt > 0
-        ? `<span class="badge-int">🔷 ${palInt} int.</span> ${palFra ? '<span class="badge-fra">◻ frac.</span>' : ''}`
-        : `<span class="badge-zero">—</span>`;
+      const palRec = it.pal_recebido != null ? it.pal_recebido : 0;
+      const palInt = palRec > 0 ? Math.floor(palRec) : 0;
+      const palFra = palRec > 0 && (palRec - palInt) > 0.01 ? 1 : 0;
       const stColor = STATUS_COLORS[it.status] || "var(--muted)";
       return `<tr>
         <td class="td-sku">${it.receiptkey||"—"}</td>
@@ -870,10 +879,12 @@ function renderDetail(){
         <td class="td-qty">${_fmt(it.qty_previsto)}</td>
         <td class="td-qty"><strong>${_fmt(it.qty_recebido)}</strong></td>
         <td>${it.uom||"—"}</td>
-        <td class="td-palet">${palInt > 0 ? `<span class="badge-int">🔷 ${palInt}</span>` : '<span class="badge-zero">—</span>'}</td>
-        <td class="td-palet">${palFra > 0 ? '<span class="badge-fra">◻ frac.</span>' : '<span class="badge-zero">—</span>'}</td>
+        <td class="td-palet">${palInt > 0 ? `<span class="badge-int">🔷 ${palInt} fechado${palInt>1?'s':''}</span>` : '<span class="badge-zero">—</span>'}</td>
+        <td class="td-palet">${palFra > 0 ? '<span class="badge-fra">◻ fração</span>' : '<span class="badge-zero">—</span>'}</td>
         <td>${it.data_receb||it.data_criacao||"—"}</td>
         <td><span style="color:${stColor};font-weight:700;font-size:11px">${STATUS_LABELS[it.status]||it.status||"—"}</span></td>
+        <td style="font-size:11px;color:var(--muted)">${it.supplier_name||"—"}</td>
+        <td style="font-size:11px;color:var(--muted)">${it.editwho||"—"}</td>
       </tr>`;
     }).join("");
   }
@@ -909,13 +920,15 @@ function exportExcel(){
 
   // Montar CSV (Excel aceita CSV)
   const header = ["Recebimento","SKU","Ref/NF","Vencimento","Qtd Prevista","Qtd Recebida",
-                  "UOM","Paletes Inteiros","Palete Fração","Data Receb.","Status"];
+                  "UOM","Paletes Fechados","Fração","Data Receb.","Status","Expedidor","Atualiz. por"];
   const rows = items.map(it => {
-    const palInt = it.pallet ? Math.floor(it.pallet) : 0;
-    const palFra = it.pallet && (it.pallet - palInt) > 0.01 ? 1 : 0;
+    const palRec = it.pal_recebido != null ? it.pal_recebido : 0;
+    const palInt = palRec > 0 ? Math.floor(palRec) : 0;
+    const palFra = palRec > 0 && (palRec - palInt) > 0.01 ? 1 : 0;
     return [it.receiptkey,it.sku,it.nf||it.externkey||"",it.vencimento||"",
             it.qty_previsto,it.qty_recebido,it.uom,palInt,palFra,
-            it.data_receb||it.data_criacao||"",STATUS_LABELS[it.status]||it.status||""].join(";");
+            it.data_receb||it.data_criacao||"",STATUS_LABELS[it.status]||it.status||"",
+            it.supplier_name||"",it.editwho||""].join(";");
   });
   const csv = "﻿" + [header.join(";"), ...rows].join("\n");
   _download(csv, `Recebimento_${_detalheCtx.deposito||'ALL'}_${_detalheCtx.status}_${_hoje()}.csv`, "text/csv");
@@ -924,30 +937,35 @@ function exportExcel(){
 
 function exportPDF(){
   const ctx = _detalheCtx;
-  const title = `Dep. ${ctx.deposito} — ${STATUS_LABELS[ctx.status]||ctx.status}`;
+  const firstItem = _detalheItems[0] || {};
+  const depLabel = firstItem.supplier_name || (ctx.deposito ? `Dep. ${ctx.deposito}` : "Todos");
+  const title = `DEPOSITO: ${depLabel} — ${STATUS_LABELS[ctx.status]||ctx.status}`;
   const win = window.open("", "_blank");
   const rows = _detalheItems.map(it => {
-    const palInt = it.pallet ? Math.floor(it.pallet) : 0;
-    const palFra = it.pallet && (it.pallet - palInt) > 0.01 ? 1 : 0;
+    const palRec = it.pal_recebido != null ? it.pal_recebido : 0;
+    const palInt = palRec > 0 ? Math.floor(palRec) : 0;
+    const palFra = palRec > 0 && (palRec - palInt) > 0.01 ? 1 : 0;
     return `<tr>
       <td>${it.receiptkey||"—"}</td><td>${it.sku||"—"}</td>
       <td>${it.nf||it.externkey||"—"}</td><td>${it.vencimento||"—"}</td>
       <td>${_fmt(it.qty_previsto)}</td><td><strong>${_fmt(it.qty_recebido)}</strong></td>
       <td>${it.uom||"—"}</td>
-      <td>${palInt > 0 ? palInt + " int." : "—"}</td>
-      <td>${palFra > 0 ? "frac." : "—"}</td>
+      <td>${palInt > 0 ? palInt + " fechado(s)" : "—"}</td>
+      <td>${palFra > 0 ? "fração" : "—"}</td>
       <td>${it.data_receb||it.data_criacao||"—"}</td>
       <td>${STATUS_LABELS[it.status]||it.status||"—"}</td>
+      <td>${it.supplier_name||"—"}</td>
+      <td>${it.editwho||"—"}</td>
     </tr>`;
   }).join("");
 
   win.document.write(`<!DOCTYPE html><html><head>
     <meta charset="UTF-8"><title>${title}</title>
-    <style>body{font-family:Arial,sans-serif;font-size:11px;padding:20px}
+    <style>body{font-family:Arial,sans-serif;font-size:10px;padding:20px}
     h2{color:#0D2580;margin-bottom:4px}p{color:#666;margin-bottom:12px}
     table{width:100%;border-collapse:collapse}
-    th{background:#0D2580;color:#fff;padding:7px 10px;text-align:left;font-size:10px}
-    td{padding:6px 10px;border-bottom:1px solid #eee}
+    th{background:#0D2580;color:#fff;padding:6px 8px;text-align:left;font-size:9px}
+    td{padding:5px 8px;border-bottom:1px solid #eee}
     tr:nth-child(even)td{background:#F8FAFF}
     @media print{@page{size:landscape}}</style>
   </head><body>
@@ -956,7 +974,8 @@ function exportPDF(){
     <table><thead><tr>
       <th>Recebimento</th><th>SKU</th><th>Ref/NF</th><th>Vencimento</th>
       <th>Qtd Prev.</th><th>Qtd Rec.</th><th>UOM</th>
-      <th>Pal. Int.</th><th>Pal. Frac.</th><th>Data Receb.</th><th>Status</th>
+      <th>Pal. Fechado</th><th>Fração</th><th>Data Receb.</th><th>Status</th>
+      <th>Expedidor</th><th>Atualiz. por</th>
     </tr></thead><tbody>${rows}</tbody></table>
     <script>window.print();<\/script>
   </body></html>`);

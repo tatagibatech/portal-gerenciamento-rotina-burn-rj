@@ -426,10 +426,31 @@ def _receipt_to_dict(receipt: dict, pack_cache: dict) -> dict:
     receipttype = str(receipt.get("receipttype") or receipt.get("type") or
                       receipt.get("receipttypecode") or "").strip()
 
+    # Nome descritivo do expedidor (fornecedor/fábrica de origem)
+    supplier_name = (
+        receipt.get("suppliername") or receipt.get("SupplierName") or
+        receipt.get("supplierName") or receipt.get("SupplierDesc") or
+        receipt.get("supplierdesc") or receipt.get("vendorname") or
+        receipt.get("VendorName") or ""
+    )
+    # Fallback: nome do depósito configurado localmente
+    if not supplier_name and deposito:
+        supplier_name = DEPOSITOS.get(deposito, {}).get("nome", "")
+
+    # Usuário que fez a última atualização
+    editwho = (
+        receipt.get("editwho") or receipt.get("editWho") or
+        receipt.get("EditWho") or receipt.get("editedby") or
+        receipt.get("lastupdatedby") or receipt.get("modifiedby") or
+        receipt.get("addwho") or receipt.get("addWho") or ""
+    )
+
     return {
         "receiptkey":        receipt.get("receiptkey") or "",
         "externkey":         receipt.get("externreceiptkey") or "",
         "supplier_code":     supplier_code,
+        "supplier_name":     supplier_name,
+        "editwho":           editwho,
         "receipttype":       receipttype,
         "status_raw":        status_raw,
         "status":            status_derivado,
@@ -838,9 +859,10 @@ class ReceiptCollector:
         # Inicializa estrutura por depósito
         for dep, info in DEPOSITOS.items():
             resultado[dep] = {
-                "deposito":   dep,
-                "nome":       info["nome"],
-                "zona":       info["zona"],
+                "deposito":      dep,
+                "nome":          info["nome"],
+                "zona":          info["zona"],
+                "supplier_name": "",  # preenchido com o primeiro encontrado nas ASNs
                 "hoje": {s: {"count": 0, "paletes": 0, "receiptkeys": []} for s in STATUS_ORDER},
                 "backlog": {s: {"count": 0, "paletes": 0, "receiptkeys": []} for s in STATUS_ORDER},
                 "total_paletes_dia": 0,
@@ -848,9 +870,10 @@ class ReceiptCollector:
 
         # SEM depósito identificado
         resultado["OUTROS"] = {
-            "deposito":   "OUTROS",
-            "nome":       "Outros",
-            "zona":       "",
+            "deposito":      "OUTROS",
+            "nome":          "Outros",
+            "zona":          "",
+            "supplier_name": "",
             "hoje":   {s: {"count": 0, "paletes": 0, "receiptkeys": []} for s in STATUS_ORDER},
             "backlog": {s: {"count": 0, "paletes": 0, "receiptkeys": []} for s in STATUS_ORDER},
             "total_paletes_dia": 0,
@@ -863,6 +886,10 @@ class ReceiptCollector:
 
             status = rec.get("status") or "pendente"
             paletes = rec["paletes"]["paletes_total"]
+
+            # Propaga supplier_name para o card do depósito (usa o primeiro encontrado)
+            if not resultado[dep]["supplier_name"] and rec.get("supplier_name"):
+                resultado[dep]["supplier_name"] = rec["supplier_name"]
 
             # Hoje = atualizado hoje (editdate); backlog = criado antes e não atualizado hoje
             data_atual = rec.get("data_atualizacao") or rec.get("data_criacao") or ""
