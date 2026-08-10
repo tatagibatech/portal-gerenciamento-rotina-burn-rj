@@ -41,6 +41,55 @@ def index():
     return send_from_directory(STATIC_DIR, "index.html")
 
 
+@app.get("/swagger.json")
+def swagger_json():
+    """OpenAPI/Swagger definition — usado pelo ION API Gateway para registrar operações."""
+    spec = {
+        "swagger": "2.0",
+        "info": {
+            "title": "PainelRecebimentoPRD",
+            "description": "Painel de Recebimento de Produto Acabado BURN RJ",
+            "version": "1.0.0",
+        },
+        "host": "painel-burn-rj.onrender.com",
+        "basePath": "/api",
+        "schemes": ["https"],
+        "paths": {
+            "/webhook-asn": {
+                "post": {
+                    "summary": "Notificacao de nova ASN",
+                    "description": "Recebe notificacao do ION DataFlow quando uma ASN e criada ou atualizada no WMS",
+                    "operationId": "postWebhookAsn",
+                    "consumes": ["application/json"],
+                    "produces": ["application/json"],
+                    "parameters": [
+                        {
+                            "in": "body",
+                            "name": "body",
+                            "required": True,
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "receiptkey": {
+                                        "type": "string",
+                                        "description": "Chave do recebimento no WMS",
+                                    }
+                                },
+                            },
+                        }
+                    ],
+                    "responses": {
+                        "200": {"description": "ASN indexada com sucesso"},
+                        "400": {"description": "receiptkey ausente no body"},
+                        "404": {"description": "ASN nao encontrada no WMS"},
+                    },
+                }
+            }
+        },
+    }
+    return jsonify(spec)
+
+
 # ─────────────────────────────── API ─────────────────────────────────────────
 
 @app.get("/api/farol")
