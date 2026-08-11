@@ -11,6 +11,7 @@ import math
 import logging
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, date, timedelta, timezone
 from collections import defaultdict
 
@@ -177,9 +178,12 @@ class WMSClient:
                 pass
         return list(found.values())
 
-    def list_asn_by_type(self, receipttype="8", page_size=500, max_pages=40) -> set:
-        """Descobre receiptkeys consultando o WMS por receipttype (ex: 8=OP). Pagina automaticamente."""
-        keys = set()
+    def list_asn_by_type(self, receipttype="8", page_size=500, max_pages=40) -> dict:
+        """
+        Lista ASNs por receipttype, com paginação automática.
+        Retorna dict: {receiptkey: status_raw_str} para permitir filtragem sem fetch adicional.
+        """
+        result = {}   # receiptkey → status (string)
         for offset in range(0, max_pages * page_size, page_size):
             params = {
                 "storerkey":      "BURN",
@@ -196,21 +200,23 @@ class WMSClient:
                     for rec in data:
                         k = rec.get("receiptkey") or ""
                         if k:
-                            keys.add(k)
+                            result[k] = str(rec.get("status") or "")
                     if len(data) < page_size:
                         break
                 elif isinstance(data, dict):
                     k = data.get("receiptkey") or ""
                     if k:
-                        keys.add(k)
+                        result[k] = str(data.get("status") or "")
                     break
                 else:
                     break
             except Exception as e:
                 log.warning(f"list_asn_by_type erro (offset={offset}): {e}")
                 break
-        log.info(f"list_asn_by_type(type={receipttype}): {len(keys)} receiptkeys encontrados.")
-        return keys
+        abertos   = sum(1 for s in result.values() if s not in ("11","15","20"))
+        fechados  = len(result) - abertos
+        log.info(f"list_asn_by_type(type={receipttype}): {len(result)} total ({abertos} abertos, {fechados} fechados).")
+        return result
 
     def list_asn_by_date(self, date_str: str, page_size=500):
         """Lista ASNs abertas por data via endpoint advancedshipnotice."""
@@ -804,57 +810,70 @@ class ReceiptCollector:
 
     # ------------------------------------------------------------------ full refresh
 
+    # Status WMS considerados "abertos" — precisam de re-fetch a cada ciclo
+    _STATUS_WMS_ABERTO = {"0", "2", "3", "4", "5", "9", "21"}
+    # Status WMS "fechados/cancelados" — não mudam mais, não precisam de re-fetch
+    _STATUS_WMS_FECHADO = {"11", "15", "20"}
+
     def _refresh(self):
         log.info("Iniciando refresh dos recebimentos PA...")
         try:
-            # 1. Descoberta PRIMÁRIA: query por receipttype=8 no WMS
-            type_keys = self._client.list_asn_by_type(receipttype="8")
+            # 1. Descoberta PRIMÁRIA: query por receipttype=8 → retorna {rk: status_raw}
+            type_map = self._client.list_asn_by_type(receipttype="8")
 
             # Fallback se a query retornar vazio (endpoint não suportado)
-            if not type_keys:
+            if not type_map:
                 log.warning("list_asn_by_type retornou vazio — fallback para exports+stages+range.")
                 keys_exports    = self._discover_from_exports()
                 keys_stages     = self._discover_from_stages()
                 keys_range_scan = self._discover_from_range_scan(keys_exports | keys_stages)
-                type_keys = keys_exports | keys_stages | keys_range_scan
+                type_map = {k: "" for k in (keys_exports | keys_stages | keys_range_scan)}
 
-            all_keys = type_keys | self._known_keys
+            # Registra todas as keys como conhecidas (fechados entram no cache sem re-fetch)
+            self._known_keys.update(type_map.keys())
 
-            # 2. Refresh INCREMENTAL: re-busca apenas novos e ainda abertos
+            # 2. Decide quais buscar detalhes:
+            #    - abertos no WMS (status 0/2/3/4/5/9/21): sempre re-busca
+            #    - fechados no WMS (status 11/15/20): só busca se ainda não está em memória
+            #      EXCETO no startup (memória vazia): fechados são IGNORADOS na 1ª passagem
+            #      para não bloquear por horas; serão carregados nas próximas rodadas.
             with self._lock:
                 existing = dict(self._receipts)
 
-            STATUS_ABERTO = {"pendente", "em_recebimento", "recebido"}
+            startup = len(existing) == 0   # primeira rodada após deploy/restart
+
             need_fetch = set()
-            for rk in all_keys:
-                if rk not in existing:
-                    need_fetch.add(rk)                                   # nunca buscado
-                elif existing[rk].get("status") in STATUS_ABERTO:
-                    need_fetch.add(rk)                                   # aberto — pode ter mudado
+            for rk, st_raw in type_map.items():
+                if st_raw in self._STATUS_WMS_FECHADO:
+                    if not startup and rk not in existing:
+                        need_fetch.add(rk)   # fechado nunca carregado (ciclos posteriores)
+                else:
+                    need_fetch.add(rk)       # aberto — sempre re-busca
 
-            log.info(f"Total keys: {len(all_keys)} | A buscar: {len(need_fetch)} (novos + abertos)")
+            log.info(f"Total WMS type=8: {len(type_map)} | Startup={startup} | A buscar: {len(need_fetch)}")
 
-            updated = dict(existing)  # começa com dados já em memória
+            updated = dict(existing)
 
-            for rk in need_fetch:
-                if not rk:
-                    continue
+            def _fetch_one(rk):
                 try:
                     receipt = self._client.get_asn(rk)
-                    if receipt:
-                        if not _is_ordem_producao(receipt):
-                            log.debug(f"{rk} ignorado (type≠8/OP).")
-                            continue
+                    if receipt and _is_ordem_producao(receipt):
                         for det in (receipt.get("receiptdetails") or []):
                             pk = det.get("packkey") or ""
                             if pk:
                                 self._ensure_pack(pk)
-                        updated[rk] = _receipt_to_dict(receipt, self._pack_cache)
-                        self._known_keys.add(rk)
-                    else:
-                        log.debug(f"{rk} não encontrado no WMS.")
+                        return rk, _receipt_to_dict(receipt, self._pack_cache)
                 except Exception as e:
                     log.warning(f"Erro ao buscar {rk}: {e}")
+                return rk, None
+
+            workers = 10
+            with ThreadPoolExecutor(max_workers=workers) as ex:
+                futures = {ex.submit(_fetch_one, rk): rk for rk in need_fetch}
+                for fut in as_completed(futures):
+                    rk, rec = fut.result()
+                    if rec:
+                        updated[rk] = rec
 
             with self._lock:
                 self._receipts = updated
@@ -862,7 +881,7 @@ class ReceiptCollector:
                 self._erro = None
 
             self._save_cache()
-            log.info(f"Refresh concluído: {len(updated)} receipts em memória ({len(need_fetch)} atualizados).")
+            log.info(f"Refresh concluído: {len(updated)} receipts em memória ({len(need_fetch)} buscados).")
 
         except Exception as e:
             log.error(f"Erro no refresh: {e}")
