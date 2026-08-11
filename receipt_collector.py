@@ -937,9 +937,9 @@ class ReceiptCollector:
                     if known_bases:
                         max_base = max(known_bases)
                         # -5: bases recentes que podem ter sido puladas na carga inicial
-                        # +20: novas bases criadas desde o último ciclo
+                        # +500: cobre gap entre carga histórica e ASNs criadas hoje
                         bases_novas = [
-                            b for b in range(max(1, max_base - 5), max_base + 21)
+                            b for b in range(max(1, max_base - 5), max_base + 501)
                             if b not in known_bases
                         ]
                         if bases_novas:
