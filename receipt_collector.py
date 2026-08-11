@@ -73,6 +73,17 @@ def _hoje_str():
     return datetime.now(_BRT).date().isoformat()
 
 
+def _meses_validos() -> set:
+    """Retorna YYYY-MM do mês atual e do mês anterior (janela do backlog)."""
+    hoje = datetime.now(_BRT).date()
+    mes_atual = hoje.strftime("%Y-%m")
+    if hoje.month == 1:
+        mes_anterior = f"{hoje.year - 1}-12"
+    else:
+        mes_anterior = f"{hoje.year}-{hoje.month - 1:02d}"
+    return {mes_atual, mes_anterior}
+
+
 class WMSClient:
     def __init__(self):
         self._token = None
@@ -1147,6 +1158,7 @@ class ReceiptCollector:
             receipts = dict(self._receipts)
 
         hoje_str = _hoje_str()
+        meses_validos = _meses_validos()
         resultado = {}
 
         # Inicializa estrutura por depósito
@@ -1189,6 +1201,10 @@ class ReceiptCollector:
             ref_date   = data_filtro if data_filtro else hoje_str
             is_hoje    = (data_atual == ref_date)
 
+            # Backlog: ignora ASNs anteriores ao mês passado
+            if not is_hoje and data_atual[:7] not in meses_validos:
+                continue
+
             bucket = "hoje" if is_hoje else "backlog"
             resultado[dep][bucket][status]["count"]      += 1
             resultado[dep][bucket][status]["paletes"]    += paletes
@@ -1229,6 +1245,7 @@ class ReceiptCollector:
             receipts = dict(self._receipts)
 
         hoje_str = _hoje_str()
+        meses_validos = _meses_validos()
         resultado = []
         for rk, rec in receipts.items():
             dep = rec.get("deposito") or "OUTROS"
@@ -1243,6 +1260,9 @@ class ReceiptCollector:
             if bucket == "hoje" and not is_hoje:
                 continue
             if bucket == "backlog" and is_hoje:
+                continue
+            # Backlog: ignora ASNs anteriores ao mês passado
+            if not is_hoje and data_atual[:7] not in meses_validos:
                 continue
             resultado.append(rec)
         return resultado
