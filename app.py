@@ -6,8 +6,11 @@ Backend Flask — serve o dashboard e as APIs de dados.
 import logging
 import os
 import json
+import threading
+import time
 from datetime import datetime, timezone, timedelta
 
+import requests as _requests
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 
@@ -29,6 +32,25 @@ app = Flask(__name__, static_folder=STATIC_DIR, static_url_path="/static")
 CORS(app)
 
 collector = ReceiptCollector(intervalo=POLL_INTERVALO)
+
+
+def _self_ping():
+    """Faz GET no próprio /api/status a cada 10 min para evitar hibernação do Render."""
+    # Aguarda 2 min para o app subir completamente antes do primeiro ping
+    time.sleep(120)
+    host = os.environ.get("RENDER_EXTERNAL_URL", "http://localhost:5002")
+    url  = f"{host}/api/status"
+    while True:
+        try:
+            _requests.get(url, timeout=10)
+            log.debug(f"Self-ping OK: {url}")
+        except Exception as e:
+            log.debug(f"Self-ping falhou (normal na inicializacao): {e}")
+        time.sleep(600)  # 10 minutos
+
+
+_ping_thread = threading.Thread(target=_self_ping, daemon=True, name="self-ping")
+_ping_thread.start()
 
 
 @app.before_request
