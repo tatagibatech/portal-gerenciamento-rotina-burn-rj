@@ -891,8 +891,8 @@ class ReceiptCollector:
             if not resultado[dep]["supplier_name"] and rec.get("supplier_name"):
                 resultado[dep]["supplier_name"] = rec["supplier_name"]
 
-            # Hoje = atualizado hoje (editdate); backlog = criado antes e não atualizado hoje
-            data_atual = rec.get("data_atualizacao") or rec.get("data_criacao") or ""
+            # Hoje = criado hoje (adddate); backlog = criado antes
+            data_atual = rec.get("data_criacao") or rec.get("data_atualizacao") or ""
             if data_filtro:
                 is_hoje = (data_atual == data_filtro)
             else:
@@ -945,7 +945,7 @@ class ReceiptCollector:
                 continue
             if status and rec.get("status") != status:
                 continue
-            data_atual = rec.get("data_atualizacao") or rec.get("data_criacao") or ""
+            data_atual = rec.get("data_criacao") or rec.get("data_atualizacao") or ""
             is_hoje = (data_atual == hoje_str)
             if bucket == "hoje" and not is_hoje:
                 continue
