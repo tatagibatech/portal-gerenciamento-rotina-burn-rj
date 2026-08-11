@@ -321,6 +321,22 @@ def _is_ordem_producao(receipt: dict) -> bool:
     return tipo in TIPO_ORDEM_PRODUCAO
 
 
+def _norm_date(val) -> str:
+    """Normaliza data WMS para YYYY-MM-DD, aceitando ISO e formato americano MM/DD/YYYY."""
+    s = str(val or "").strip()
+    if not s:
+        return ""
+    # ISO: "2026-08-10" ou "2026-08-10T10:30:00"
+    if len(s) >= 10 and s[4:5] == "-":
+        return s[:10]
+    # Americano: "08/10/2026" ou "08/10/2026 10:30 AM"
+    if len(s) >= 10 and s[2:3] == "/":
+        parts = s[:10].split("/")
+        if len(parts) == 3:
+            return f"{parts[2]}-{parts[0].zfill(2)}-{parts[1].zfill(2)}"
+    return s[:10]
+
+
 def _receipt_to_dict(receipt: dict, pack_cache: dict) -> dict:
     """Normaliza um receipt da API para estrutura interna."""
     details = receipt.get("receiptdetails") or []
@@ -361,14 +377,13 @@ def _receipt_to_dict(receipt: dict, pack_cache: dict) -> dict:
     if not deposito:
         deposito = _deposito_from_receiptkey(receipt.get("externreceiptkey") or "")
 
-    add_dt  = (receipt.get("adddate") or "")[:10]
-    close_dt = (receipt.get("closeddate") or "")[:10]
-    rec_dt   = (receipt.get("receiptdate") or "")[:10]
-    # Data da última atualização — campo primário para classificar "hoje"
-    edit_dt = (
+    add_dt   = _norm_date(receipt.get("adddate"))
+    close_dt = _norm_date(receipt.get("closeddate"))
+    rec_dt   = _norm_date(receipt.get("receiptdate"))
+    edit_dt  = _norm_date(
         receipt.get("editdate") or receipt.get("lastmoddate") or
         receipt.get("updatedate") or receipt.get("modifieddate") or ""
-    )[:10]
+    )
 
     paletes = _calcula_paletes(details, pack_cache)
 
