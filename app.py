@@ -358,6 +358,36 @@ def api_webhook_asn():
         return jsonify({"erro": str(e)}), 500
 
 
+# ─────────────────────────────── Inventário ──────────────────────────────────
+
+_inventario_dados = {}  # dados em memória — recarregados via POST /api/inventario/dados
+
+
+@app.post("/api/inventario/dados")
+def api_inventario_upload():
+    """Recebe o inventario_processado.json gerado pelo script local e armazena em memória."""
+    try:
+        dados = request.get_json(force=True, silent=True) or {}
+        if not dados:
+            return jsonify({"ok": False, "msg": "body vazio"}), 400
+        global _inventario_dados
+        _inventario_dados = dados
+        _inventario_dados["recebido_em"] = datetime.now().isoformat(timespec="seconds")
+        log.info(f"Inventário recebido: {dados.get('total_asns',0)} ASNs, {len(dados.get('linhas',[]))} pares loc×sku")
+        return jsonify({"ok": True, "total_linhas": len(dados.get("linhas", []))})
+    except Exception as e:
+        log.error(f"Erro em /api/inventario/dados: {e}")
+        return jsonify({"erro": str(e)}), 500
+
+
+@app.get("/api/inventario")
+def api_inventario():
+    """Retorna os dados de inventário processados."""
+    if not _inventario_dados:
+        return jsonify({"vazio": True, "msg": "Nenhum dado de inventário carregado."}), 200
+    return jsonify(_inventario_dados)
+
+
 @app.get("/api/config-check")
 def api_config_check():
     """Diagnóstico de configuração — mostra prefixo das credenciais (não expõe valores completos)."""

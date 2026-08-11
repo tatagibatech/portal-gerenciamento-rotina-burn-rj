@@ -231,6 +231,47 @@ main{padding:20px 24px 40px;max-width:1600px;margin:0 auto}
   background:#EEF2FF;font-size:12px;
   border-top:2px solid var(--blue-light);padding:9px 14px
 }
+
+/* ══ INVENTÁRIO ══ */
+.inv-tabs{display:flex;gap:2px;border-bottom:2px solid var(--border);margin-bottom:16px}
+.inv-tab{
+  padding:8px 18px;font-size:12px;font-weight:600;cursor:pointer;
+  color:var(--muted);border-bottom:3px solid transparent;margin-bottom:-2px;
+  text-transform:uppercase;letter-spacing:.5px;transition:all .15s
+}
+.inv-tab:hover{color:var(--blue)}
+.inv-tab.active{color:var(--blue-dark);border-bottom-color:var(--blue)}
+.inv-tab-content{animation:fadeIn .2s}
+@keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.inv-charts-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.inv-chart-card{
+  background:var(--surface);border-radius:10px;padding:16px;box-shadow:var(--shadow)
+}
+.inv-chart-title{font-size:12px;font-weight:700;color:var(--blue-dark);margin-bottom:12px;
+  text-transform:uppercase;letter-spacing:.5px}
+.inv-filtro{
+  border:1px solid var(--border);border-radius:6px;padding:5px 10px;
+  font-size:12px;color:var(--text);background:#fff;outline:none
+}
+.inv-filtro:focus{border-color:var(--blue)}
+.inv-status-badge{
+  display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700
+}
+.inv-s-PENDENTE{background:#FEF3C7;color:#92400E}
+.inv-s-C1_OK{background:#D1FAE5;color:#065F46}
+.inv-s-AGUARDA_C2{background:#DBEAFE;color:#1E40AF}
+.inv-s-C2_OK{background:#A7F3D0;color:#065F46}
+.inv-s-AGUARDA_C3{background:#FDE68A;color:#92400E}
+.inv-s-CONCLUIDO{background:#E5E7EB;color:#374151}
+.inv-arm-card{
+  background:var(--surface);border-radius:10px;padding:16px;box-shadow:var(--shadow);margin-bottom:14px
+}
+.inv-arm-title{font-weight:700;color:var(--blue-dark);font-size:13px;margin-bottom:10px}
+.inv-progress-bar{background:#EEF2FF;border-radius:6px;height:12px;overflow:hidden;margin:6px 0}
+.inv-progress-fill{height:100%;border-radius:6px;
+  background:linear-gradient(90deg,var(--blue),var(--blue-light));transition:width .5s}
+.inv-div-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:900px){.inv-charts-grid,.inv-div-grid{grid-template-columns:1fr}}
 .count-badge{
   display:inline-flex;align-items:center;padding:2px 8px;
   border-radius:10px;font-size:11px;font-weight:700;min-width:32px;justify-content:center
@@ -362,6 +403,7 @@ main{padding:20px 24px 40px;max-width:1600px;margin:0 auto}
   main{padding:12px}
 }
 </style>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 </head>
 <body>
 
@@ -389,12 +431,13 @@ main{padding:20px 24px 40px;max-width:1600px;margin:0 auto}
 <nav>
   <div class="nav-item active" onclick="setNav('recebimento')">Recebimento PA</div>
   <div class="nav-item disabled">Expedição</div>
-  <div class="nav-item disabled">Inventário</div>
+  <div class="nav-item" onclick="setNav('inventario')">Inventário</div>
   <div class="nav-item disabled">Relatórios</div>
 </nav>
 
 <!-- ══════════════════ MAIN ══════════════════ -->
 <main>
+<div id="page-recebimento">
 
   <!-- toolbar -->
   <div class="panel-header">
@@ -458,6 +501,127 @@ main{padding:20px 24px 40px;max-width:1600px;margin:0 auto}
       </table>
     </div>
   </div>
+</div><!-- /page-recebimento -->
+
+<!-- ══════════════════ PAGE: INVENTÁRIO ══════════════════ -->
+<div id="page-inventario" class="hidden">
+
+  <!-- toolbar inventário -->
+  <div class="panel-header">
+    <div class="panel-title">Inventário Físico — BURN RJ <span class="tag" id="invPrefixoTag">—</span></div>
+    <div class="panel-actions">
+      <button class="btn btn-outline btn-sm" onclick="carregarInventario()">↺ Atualizar</button>
+      <button class="btn btn-outline btn-sm" onclick="exportarInventarioExcel()">📥 Excel</button>
+      <button class="btn btn-outline btn-sm" onclick="exportarInventarioPDF()">📄 PDF</button>
+    </div>
+  </div>
+  <div style="font-size:11px;color:var(--muted);margin-bottom:14px">
+    Última carga: <strong id="invGeradoEm">—</strong>
+  </div>
+
+  <!-- KPI cards inventário -->
+  <div class="summary-cards" id="invKpiCards">
+    <div class="scard recebido"><div class="scard-num" id="invAcuracia">—</div><div class="scard-lbl">Acurácia</div></div>
+    <div class="scard fechado"><div class="scard-num" id="invConcluidos">—</div><div class="scard-lbl">Concluídos</div></div>
+    <div class="scard pendente"><div class="scard-num" id="invPendentes">—</div><div class="scard-lbl">Pendentes</div></div>
+    <div class="scard em_recebimento"><div class="scard-num" id="invEmAndamento">—</div><div class="scard-lbl">Em C2/C3</div></div>
+    <div class="scard paletes"><div class="scard-num" id="invValorDiv">—</div><div class="scard-lbl">Valor Divergência</div></div>
+  </div>
+
+  <!-- abas internas inventário -->
+  <div class="inv-tabs">
+    <div class="inv-tab active" onclick="setInvTab('resumo')">Visão Geral</div>
+    <div class="inv-tab" onclick="setInvTab('armazens')">Armazéns</div>
+    <div class="inv-tab" onclick="setInvTab('contagens')">Contagens</div>
+    <div class="inv-tab" onclick="setInvTab('divergencias')">Divergências</div>
+  </div>
+
+  <!-- ── ABA: VISÃO GERAL ── -->
+  <div id="inv-tab-resumo" class="inv-tab-content">
+    <div class="inv-charts-grid">
+      <div class="inv-chart-card">
+        <div class="inv-chart-title">Distribuição por Status</div>
+        <canvas id="chartStatus" height="220"></canvas>
+      </div>
+      <div class="inv-chart-card">
+        <div class="inv-chart-title">Progresso por Armazém</div>
+        <canvas id="chartArmazem" height="220"></canvas>
+      </div>
+    </div>
+    <div class="section-title" style="margin-top:20px">Índice de Convergência</div>
+    <table class="backlog-table" id="invConvergenciaTable">
+      <thead><tr>
+        <th>Armazém</th><th>Total</th><th>Concluído C1</th><th>Concluído C2</th><th>Concluído C3</th><th>Pendentes</th><th>% Concluído</th>
+      </tr></thead>
+      <tbody id="invConvergenciaBody"></tbody>
+    </table>
+  </div>
+
+  <!-- ── ABA: ARMAZÉNS ── -->
+  <div id="inv-tab-armazens" class="inv-tab-content hidden">
+    <div id="invArmazensCards"></div>
+  </div>
+
+  <!-- ── ABA: CONTAGENS ── -->
+  <div id="inv-tab-contagens" class="inv-tab-content hidden">
+    <div class="panel-actions" style="margin-bottom:12px;flex-wrap:wrap;gap:8px">
+      <input type="text" id="invFiltroSku" placeholder="SKU..." class="inv-filtro" oninput="renderContagens()">
+      <input type="text" id="invFiltroLoc" placeholder="Endereço..." class="inv-filtro" oninput="renderContagens()">
+      <select id="invFiltroArm" class="inv-filtro" onchange="renderContagens()">
+        <option value="">Todos os armazéns</option>
+      </select>
+      <select id="invFiltroStatus" class="inv-filtro" onchange="renderContagens()">
+        <option value="">Todos os status</option>
+        <option value="PENDENTE">Pendente</option>
+        <option value="C1_OK">C1 OK</option>
+        <option value="AGUARDA_C2">Aguarda C2</option>
+        <option value="C2_OK">C2 OK</option>
+        <option value="AGUARDA_C3">Aguarda C3</option>
+        <option value="CONCLUIDO">Concluído</option>
+      </select>
+      <label style="font-size:11px;display:flex;align-items:center;gap:4px">
+        <input type="checkbox" id="invFiltroDiverg" onchange="renderContagens()"> Só divergências
+      </label>
+      <span id="invContagensTotal" style="font-size:11px;color:var(--muted);margin-left:auto"></span>
+    </div>
+    <div style="overflow-x:auto">
+      <table class="backlog-table" id="invContagensTable">
+        <thead><tr>
+          <th>Endereço</th><th>Armazém</th><th>Depósito ERP</th><th>SKU</th>
+          <th>ERP Qtd</th><th>C1</th><th>C2</th><th>C3</th>
+          <th>Qtd Final</th><th>Divergência</th><th>Valor R$</th><th>Status</th>
+        </tr></thead>
+        <tbody id="invContagensBody"></tbody>
+      </table>
+    </div>
+    <div id="invContPag" class="pag-btns" style="margin-top:10px;justify-content:center"></div>
+  </div>
+
+  <!-- ── ABA: DIVERGÊNCIAS ── -->
+  <div id="inv-tab-divergencias" class="inv-tab-content hidden">
+    <div class="inv-charts-grid">
+      <div class="inv-chart-card" style="grid-column:1/-1">
+        <div class="inv-chart-title">Top 20 SKUs por Valor Divergente (R$)</div>
+        <canvas id="chartPareto" height="160"></canvas>
+      </div>
+    </div>
+    <div class="inv-div-grid" style="margin-top:16px">
+      <div>
+        <div class="section-title">Faltas (divergência negativa)</div>
+        <table class="backlog-table"><thead><tr>
+          <th>SKU</th><th>Depósito</th><th>Qtd ERP</th><th>Qtd Final</th><th>Divergência</th><th>Valor R$</th>
+        </tr></thead><tbody id="invFaltasBody"></tbody></table>
+      </div>
+      <div>
+        <div class="section-title">Sobras (divergência positiva)</div>
+        <table class="backlog-table"><thead><tr>
+          <th>SKU</th><th>Depósito</th><th>Qtd ERP</th><th>Qtd Final</th><th>Divergência</th><th>Valor R$</th>
+        </tr></thead><tbody id="invSobrasBody"></tbody></table>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /page-inventario -->
 </main>
 
 <!-- ══════════════════ MODAL DETALHE ══════════════════ -->
@@ -1050,10 +1214,305 @@ function exportPDF(){
    NAV
 ══════════════════════════════════════════════════════════════ */
 function setNav(id){
+  document.querySelectorAll(".nav-item:not(.disabled)").forEach(el => el.classList.remove("active"));
+  const label = id === "recebimento" ? "recebimento" : "inventário";
   document.querySelectorAll(".nav-item:not(.disabled)").forEach(el => {
-    el.classList.remove("active");
-    if (el.textContent.toLowerCase().includes("recebimento")) el.classList.add("active");
+    if (el.textContent.toLowerCase().includes(label)) el.classList.add("active");
   });
+  document.getElementById("page-recebimento").classList.toggle("hidden", id !== "recebimento");
+  document.getElementById("page-inventario").classList.toggle("hidden", id !== "inventario");
+  if (id === "inventario") carregarInventario();
+}
+
+/* ══════════════════════════════════════════════════════════════
+   INVENTÁRIO
+══════════════════════════════════════════════════════════════ */
+let _invDados = null;
+let _invPagAtual = 1;
+const INV_PG = 50;
+let _chartStatus = null, _chartArmazem = null, _chartPareto = null;
+
+const INV_STATUS_LABEL = {
+  PENDENTE:"Pendente", C1_OK:"C1 OK", AGUARDA_C2:"Aguarda C2",
+  C2_OK:"C2 OK", AGUARDA_C3:"Aguarda C3", CONCLUIDO:"Concluído"
+};
+const INV_STATUS_COLORS = {
+  PENDENTE:"#F59E0B", C1_OK:"#22C55E", AGUARDA_C2:"#3B82F6",
+  C2_OK:"#10B981", AGUARDA_C3:"#F97316", CONCLUIDO:"#6B7280"
+};
+
+async function carregarInventario(){
+  try {
+    mostrarLoading(true);
+    const r = await fetch("/api/inventario");
+    const d = await r.json();
+    if (d.vazio) {
+      document.getElementById("invGeradoEm").textContent = "Nenhum dado carregado";
+      _invDados = null;
+      return;
+    }
+    _invDados = d;
+    renderInventario();
+  } catch(e) {
+    toast("Erro ao carregar inventário: " + e.message, "error");
+  } finally {
+    esconderLoading();
+  }
+}
+
+function renderInventario(){
+  if (!_invDados) return;
+  const kpi = _invDados.kpi || {};
+  const prefixo = _invDados.prefixo || "—";
+
+  document.getElementById("invPrefixoTag").textContent = prefixo;
+  document.getElementById("invGeradoEm").textContent = _invDados.recebido_em || _invDados.gerado_em || "—";
+  document.getElementById("invAcuracia").textContent = (kpi.acuracia_pct||0).toFixed(1) + "%";
+  document.getElementById("invConcluidos").textContent = `${kpi.concluidos||0}/${kpi.total_loc_sku||0}`;
+  document.getElementById("invPendentes").textContent = kpi.pendentes||0;
+  document.getElementById("invEmAndamento").textContent = kpi.em_andamento||0;
+  document.getElementById("invValorDiv").textContent = "R$ " + _fmt(kpi.valor_total_div||0);
+
+  // popular filtro de armazéns
+  const arms = [...new Set((_invDados.linhas||[]).map(l => l.armazem).filter(Boolean))].sort();
+  const selArm = document.getElementById("invFiltroArm");
+  selArm.innerHTML = '<option value="">Todos os armazéns</option>' +
+    arms.map(a => `<option value="${a}">${a}</option>`).join("");
+
+  renderVisaoGeral();
+  renderArmazens();
+  renderContagens();
+  renderDivergencias();
+}
+
+function setInvTab(id){
+  document.querySelectorAll(".inv-tab").forEach((el,i) => {
+    const tabs = ["resumo","armazens","contagens","divergencias"];
+    el.classList.toggle("active", tabs[i] === id);
+  });
+  ["resumo","armazens","contagens","divergencias"].forEach(t => {
+    document.getElementById(`inv-tab-${t}`).classList.toggle("hidden", t !== id);
+  });
+}
+
+function renderVisaoGeral(){
+  const linhas = _invDados.linhas || [];
+  const contStatus = {};
+  for (const s of Object.keys(INV_STATUS_LABEL)) contStatus[s] = 0;
+  linhas.forEach(l => { if (l.status in contStatus) contStatus[l.status]++; });
+
+  // Gráfico pizza status
+  const labels = Object.keys(INV_STATUS_LABEL).map(k => INV_STATUS_LABEL[k]);
+  const vals   = Object.keys(INV_STATUS_LABEL).map(k => contStatus[k]);
+  const colors = Object.keys(INV_STATUS_LABEL).map(k => INV_STATUS_COLORS[k]);
+
+  if (_chartStatus) _chartStatus.destroy();
+  _chartStatus = new Chart(document.getElementById("chartStatus"), {
+    type:"doughnut",
+    data:{labels, datasets:[{data:vals, backgroundColor:colors, borderWidth:2}]},
+    options:{plugins:{legend:{position:"right",labels:{font:{size:11}}}}, cutout:"55%"}
+  });
+
+  // Gráfico barras por armazém
+  const kpiArm = _invDados.kpi_por_armazem || {};
+  const armLabels = Object.keys(kpiArm).sort();
+  const concl = armLabels.map(a => (kpiArm[a].c1_ok||0)+(kpiArm[a].c2_ok||0)+(kpiArm[a].concluido||0));
+  const pend  = armLabels.map(a => kpiArm[a].pendente||0);
+  const andto = armLabels.map(a => (kpiArm[a].aguarda_c2||0)+(kpiArm[a].aguarda_c3||0));
+
+  if (_chartArmazem) _chartArmazem.destroy();
+  _chartArmazem = new Chart(document.getElementById("chartArmazem"), {
+    type:"bar",
+    data:{labels: armLabels, datasets:[
+      {label:"Concluído",  data:concl, backgroundColor:"#22C55E"},
+      {label:"Em andamento",data:andto,backgroundColor:"#3B82F6"},
+      {label:"Pendente",   data:pend,  backgroundColor:"#F59E0B"},
+    ]},
+    options:{plugins:{legend:{position:"top",labels:{font:{size:10}}}},
+      scales:{x:{stacked:true},y:{stacked:true,ticks:{font:{size:10}}}},
+      responsive:true, maintainAspectRatio:false}
+  });
+
+  // Tabela convergência
+  const tbody = document.getElementById("invConvergenciaBody");
+  tbody.innerHTML = armLabels.map(a => {
+    const k = kpiArm[a];
+    const tot = k.total||0;
+    const pctConc = tot > 0 ? Math.round(((k.c1_ok||0)+(k.c2_ok||0)+(k.concluido||0))/tot*100) : 0;
+    return `<tr>
+      <td class="bl-dep">${a}</td>
+      <td>${tot}</td>
+      <td>${k.c1_ok||0}</td>
+      <td>${k.c2_ok||0}</td>
+      <td>${k.concluido||0}</td>
+      <td>${k.pendente||0}</td>
+      <td><strong>${pctConc}%</strong></td>
+    </tr>`;
+  }).join("") || '<tr><td colspan="7" style="text-align:center;color:var(--muted)">Sem dados</td></tr>';
+}
+
+function renderArmazens(){
+  const kpiArm = _invDados.kpi_por_armazem || {};
+  const cont   = document.getElementById("invArmazensCards");
+  cont.innerHTML = Object.entries(kpiArm).sort(([a],[b])=>a.localeCompare(b)).map(([arm,k]) => {
+    const tot   = k.total||0;
+    const concl = (k.c1_ok||0)+(k.c2_ok||0)+(k.concluido||0);
+    const pct   = tot > 0 ? Math.round(concl/tot*100) : 0;
+    return `<div class="inv-arm-card">
+      <div class="inv-arm-title">${arm} <span style="font-size:11px;color:var(--muted);font-weight:400">${concl}/${tot} endereços contados</span></div>
+      <div class="inv-progress-bar"><div class="inv-progress-fill" style="width:${pct}%"></div></div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">${pct}% concluído
+        &nbsp;·&nbsp; <span style="color:#F59E0B">${k.pendente||0} pend.</span>
+        &nbsp;·&nbsp; <span style="color:#3B82F6">${(k.aguarda_c2||0)+(k.aguarda_c3||0)} em andamento</span>
+        &nbsp;·&nbsp; <span style="color:#EF4444">${k.com_divergencia||0} com divergência</span>
+        &nbsp;·&nbsp; Valor div.: <strong>R$ ${_fmt(k.valor_divergencia||0)}</strong>
+      </div>
+    </div>`;
+  }).join("") || '<p style="color:var(--muted)">Sem dados de armazém.</p>';
+}
+
+function renderContagens(){
+  if (!_invDados) return;
+  const fSku    = (document.getElementById("invFiltroSku").value||"").toLowerCase();
+  const fLoc    = (document.getElementById("invFiltroLoc").value||"").toLowerCase();
+  const fArm    = document.getElementById("invFiltroArm").value||"";
+  const fStatus = document.getElementById("invFiltroStatus").value||"";
+  const fDiv    = document.getElementById("invFiltroDiverg").checked;
+
+  const filtered = (_invDados.linhas||[]).filter(l => {
+    if (fSku    && !String(l.sku||"").toLowerCase().includes(fSku))   return false;
+    if (fLoc    && !String(l.loc||"").toLowerCase().includes(fLoc))   return false;
+    if (fArm    && l.armazem !== fArm)                                 return false;
+    if (fStatus && l.status !== fStatus)                               return false;
+    if (fDiv    && !l.divergencia)                                     return false;
+    return true;
+  });
+
+  document.getElementById("invContagensTotal").textContent = `${filtered.length} linha(s)`;
+  const totalPag = Math.ceil(filtered.length / INV_PG) || 1;
+  if (_invPagAtual > totalPag) _invPagAtual = 1;
+  const page = filtered.slice((_invPagAtual-1)*INV_PG, _invPagAtual*INV_PG);
+
+  const tbody = document.getElementById("invContagensBody");
+  tbody.innerHTML = page.map(l => {
+    const div = l.divergencia;
+    const divColor = div == null ? "" : div > 0 ? "color:#22C55E" : div < 0 ? "color:#EF4444" : "color:var(--muted)";
+    return `<tr>
+      <td style="font-family:monospace;font-size:11px">${l.loc||"—"}</td>
+      <td>${l.armazem||"—"}</td>
+      <td>${l.deposito_erp||"—"}</td>
+      <td><strong>${l.sku||"—"}</strong></td>
+      <td class="td-qty">${_fmt(l.qty_erp)}</td>
+      <td class="td-qty">${l.c1 != null ? _fmt(l.c1) : "—"}</td>
+      <td class="td-qty">${l.c2 != null ? _fmt(l.c2) : "—"}</td>
+      <td class="td-qty">${l.c3 != null ? _fmt(l.c3) : "—"}</td>
+      <td class="td-qty">${l.qty_final != null ? _fmt(l.qty_final) : "—"}</td>
+      <td class="td-qty" style="${divColor};font-weight:700">${div != null ? (div>0?"+":"")+_fmt(div) : "—"}</td>
+      <td class="td-qty">${l.valor_div != null ? "R$ "+_fmt(l.valor_div) : "—"}</td>
+      <td><span class="inv-status-badge inv-s-${l.status}">${INV_STATUS_LABEL[l.status]||l.status}</span></td>
+    </tr>`;
+  }).join("") || '<tr><td colspan="12" style="text-align:center;color:var(--muted);padding:20px">Nenhuma linha encontrada</td></tr>';
+
+  const pag = document.getElementById("invContPag");
+  pag.innerHTML = `<span style="font-size:11px;color:var(--muted)">${filtered.length} itens</span>
+    <button class="pag-btn${_invPagAtual===1?' disabled':''}" onclick="_invMudaPag(${_invPagAtual-1})">‹ Ant</button>
+    <button class="pag-btn active">${_invPagAtual}/${totalPag}</button>
+    <button class="pag-btn${_invPagAtual>=totalPag?' disabled':''}" onclick="_invMudaPag(${_invPagAtual+1})">Prox ›</button>`;
+}
+
+function _invMudaPag(p){ if(p<1||p>9999) return; _invPagAtual=p; renderContagens(); }
+
+function renderDivergencias(){
+  const linhas = (_invDados.linhas||[]).filter(l => l.divergencia != null && l.divergencia !== 0);
+  const faltas = linhas.filter(l => l.divergencia < 0).sort((a,b) => a.valor_div-b.valor_div).slice(0,20);
+  const sobras = linhas.filter(l => l.divergencia > 0).sort((a,b) => b.valor_div-a.valor_div).slice(0,20);
+
+  const rowDiv = (l) => `<tr>
+    <td><strong>${l.sku}</strong></td><td>${l.deposito_erp}</td>
+    <td class="td-qty">${_fmt(l.qty_erp)}</td>
+    <td class="td-qty">${l.qty_final!=null?_fmt(l.qty_final):"—"}</td>
+    <td class="td-qty" style="color:${l.divergencia<0?"#EF4444":"#22C55E"};font-weight:700">
+      ${l.divergencia>0?"+":" "}${_fmt(l.divergencia)}</td>
+    <td class="td-qty">R$ ${_fmt(Math.abs(l.valor_div||0))}</td>
+  </tr>`;
+
+  document.getElementById("invFaltasBody").innerHTML = faltas.map(rowDiv).join("") ||
+    '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:12px">Sem faltas</td></tr>';
+  document.getElementById("invSobrasBody").innerHTML = sobras.map(rowDiv).join("") ||
+    '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:12px">Sem sobras</td></tr>';
+
+  // Pareto top 20 por valor absoluto
+  const top20 = [...linhas].sort((a,b) => Math.abs(b.valor_div||0)-Math.abs(a.valor_div||0)).slice(0,20);
+  if (_chartPareto) _chartPareto.destroy();
+  if (!top20.length) return;
+  const acum = []; let soma = 0;
+  const totalAbs = top20.reduce((s,l) => s+Math.abs(l.valor_div||0),0);
+  top20.forEach(l => { soma += Math.abs(l.valor_div||0); acum.push(totalAbs>0?Math.round(soma/totalAbs*100):0); });
+
+  _chartPareto = new Chart(document.getElementById("chartPareto"), {
+    data:{
+      labels: top20.map(l => `${l.sku}`),
+      datasets:[
+        {type:"bar", label:"Valor Div. R$", data:top20.map(l=>Math.abs(l.valor_div||0)),
+         backgroundColor: top20.map(l=>l.divergencia<0?"#FCA5A5":"#86EFAC"), yAxisID:"y"},
+        {type:"line", label:"% Acumulado", data:acum, borderColor:"#1437A0",
+         borderWidth:2, pointRadius:3, fill:false, yAxisID:"y2"},
+      ]
+    },
+    options:{
+      plugins:{legend:{position:"top",labels:{font:{size:10}}}},
+      scales:{
+        y:{ticks:{font:{size:10},callback:v=>"R$"+_fmt(v)}},
+        y2:{position:"right",ticks:{font:{size:10},callback:v=>v+"%"},max:100,grid:{drawOnChartArea:false}}
+      },
+      responsive:true,maintainAspectRatio:false
+    }
+  });
+}
+
+function exportarInventarioExcel(){
+  if (!_invDados) return toast("Sem dados de inventário.", "error");
+  const sep = ";";
+  const rows = [
+    ["Endereço","Armazém","Depósito ERP","SKU","Qtd ERP","C1","C2","C3","Qtd Final","Divergência","Valor R$","Status"].join(sep)
+  ];
+  (_invDados.linhas||[]).forEach(l => rows.push(
+    [l.loc,l.armazem,l.deposito_erp,l.sku,l.qty_erp,l.c1??"",l.c2??"",l.c3??"",
+     l.qty_final??"",l.divergencia??"",l.valor_div??"",l.status].join(sep)
+  ));
+  _download("﻿"+rows.join("\n"), `inventario_${_invDados.prefixo||"export"}.csv`, "text/csv;charset=utf-8");
+}
+
+function exportarInventarioPDF(){
+  if (!_invDados) return toast("Sem dados de inventário.", "error");
+  const kpi = _invDados.kpi||{};
+  const win = window.open("","_blank");
+  const rows = (_invDados.linhas||[]).map(l => `<tr>
+    <td>${l.loc}</td><td>${l.armazem}</td><td>${l.deposito_erp}</td><td>${l.sku}</td>
+    <td>${_fmt(l.qty_erp)}</td><td>${l.c1!=null?_fmt(l.c1):"—"}</td>
+    <td>${l.c2!=null?_fmt(l.c2):"—"}</td><td>${l.c3!=null?_fmt(l.c3):"—"}</td>
+    <td>${l.qty_final!=null?_fmt(l.qty_final):"—"}</td>
+    <td style="color:${(l.divergencia||0)<0?"#EF4444":"#22C55E"}">${l.divergencia!=null?(l.divergencia>0?"+":"")+_fmt(l.divergencia):"—"}</td>
+    <td>${l.valor_div!=null?"R$"+_fmt(l.valor_div):"—"}</td>
+    <td>${INV_STATUS_LABEL[l.status]||l.status}</td>
+  </tr>`).join("");
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
+  <title>Inventário ${_invDados.prefixo}</title>
+  <style>body{font-family:Arial,sans-serif;font-size:10px}
+  table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccc;padding:3px 6px}
+  th{background:#0D2580;color:#fff}tr:nth-child(even)td{background:#f5f5f5}
+  @media print{@page{size:landscape;margin:8mm}}</style></head><body>
+  <h3>Inventário ${_invDados.prefixo} — ${_invDados.recebido_em||""}</h3>
+  <p>Acurácia: <b>${(kpi.acuracia_pct||0).toFixed(1)}%</b> |
+     Concluídos: <b>${kpi.concluidos||0}/${kpi.total_loc_sku||0}</b> |
+     Valor divergência: <b>R$ ${_fmt(kpi.valor_total_div||0)}</b></p>
+  <table><thead><tr>
+    <th>Endereço</th><th>Armazém</th><th>Dep.</th><th>SKU</th>
+    <th>ERP</th><th>C1</th><th>C2</th><th>C3</th>
+    <th>Final</th><th>Div.</th><th>Valor</th><th>Status</th>
+  </tr></thead><tbody>${rows}</tbody></table>
+  <script>window.print();<\/script></body></html>`);
+  win.document.close();
 }
 
 /* ══════════════════════════════════════════════════════════════
