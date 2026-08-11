@@ -227,6 +227,10 @@ main{padding:20px 24px 40px;max-width:1600px;margin:0 auto}
 .backlog-table tbody tr:last-child td{border-bottom:none}
 .backlog-table tbody tr:hover td{background:#F8FAFF}
 .bl-dep{font-weight:700;color:var(--blue-dark)}
+.bl-total-row td{
+  background:#EEF2FF;font-size:12px;
+  border-top:2px solid var(--blue-light);padding:9px 14px
+}
 .count-badge{
   display:inline-flex;align-items:center;padding:2px 8px;
   border-radius:10px;font-size:11px;font-weight:700;min-width:32px;justify-content:center
@@ -450,6 +454,7 @@ main{padding:20px 24px 40px;max-width:1600px;margin:0 auto}
         <tbody id="backlogBody">
           <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px">Carregando...</td></tr>
         </tbody>
+        <tfoot id="backlogFoot"></tfoot>
       </table>
     </div>
   </div>
@@ -740,16 +745,26 @@ function renderDepCard(dep, info, totalHoje){
 
 function renderBacklog(depositos){
   const tbody = document.getElementById("backlogBody");
-  if (!depositos) { tbody.innerHTML = ""; return; }
+  const tfoot = document.getElementById("backlogFoot");
+  if (!depositos) { tbody.innerHTML = ""; tfoot.innerHTML = ""; return; }
+
+  const STATUS_BL = ["pendente","em_recebimento","recebido","fechado"];
+  let totPend = 0, totER = 0, totRec = 0, totFec = 0, totPal = 0;
 
   const rows = Object.entries(depositos)
     .filter(([k]) => k !== "OUTROS")
     .sort(([a],[b]) => parseInt(a)-parseInt(b))
     .map(([dep, info]) => {
       const bl = info.backlog || {};
-      const totalPal = ["pendente","em_recebimento","recebido","fechado"].reduce((s,st) => s + ((bl[st]||{}).paletes||0), 0);
-      const anyBl = Object.values(bl).some(v => v.count > 0);
+      const tp = (bl.paletes||0) + STATUS_BL.reduce((s,st) => s + ((bl[st]||{}).paletes||0), 0);
+      const totalPal = STATUS_BL.reduce((s,st) => s + ((bl[st]||{}).paletes||0), 0);
+      const anyBl = STATUS_BL.some(st => ((bl[st]||{}).count||0) > 0);
       if (!anyBl) return "";
+      totPend += (bl.pendente||{}).count||0;
+      totER   += (bl.em_recebimento||{}).count||0;
+      totRec  += (bl.recebido||{}).count||0;
+      totFec  += (bl.fechado||{}).count||0;
+      totPal  += totalPal;
       const blLabel = info.supplier_name || info.nome || dep;
       return `<tr>
         <td class="bl-dep">DEPOSITO: ${blLabel}</td>
@@ -761,9 +776,21 @@ function renderBacklog(depositos){
       </tr>`;
     }).filter(Boolean);
 
-  tbody.innerHTML = rows.length
-    ? rows.join("")
-    : `<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px">✓ Sem backlog nos dias anteriores</td></tr>`;
+  if (rows.length) {
+    tbody.innerHTML = rows.join("");
+    const totTotal = totPend + totER + totRec + totFec;
+    tfoot.innerHTML = `<tr class="bl-total-row">
+      <td><strong>TOTAL</strong></td>
+      <td><span class="count-badge cb-pend">${totPend||"—"}</span></td>
+      <td><span class="count-badge cb-emrec">${totER||"—"}</span></td>
+      <td><span class="count-badge cb-rec">${totRec||"—"}</span></td>
+      <td><span class="count-badge cb-fec">${totFec||"—"}</span></td>
+      <td><strong>${totPal}</strong> &nbsp;<small style="color:var(--muted)">(${totTotal} ASNs)</small></td>
+    </tr>`;
+  } else {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px">✓ Sem backlog nos dias anteriores</td></tr>`;
+    tfoot.innerHTML = "";
+  }
 }
 
 function countBadge(obj, cls){
