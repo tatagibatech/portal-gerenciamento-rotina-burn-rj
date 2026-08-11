@@ -687,18 +687,18 @@ class ReceiptCollector:
                 except (ValueError, IndexError):
                     pass
 
-        BASE_MINIMO_2026 = 75800
+        BASE_MINIMO_2026 = 73000  # receipts 2026 começam ~75000; varredura cobre margem abaixo
         if max_base < BASE_MINIMO_2026:
             max_base = BASE_MINIMO_2026
 
         if not self._first_scan_done:
-            scan_start = max(1, max_base - 300)
-            scan_end   = max_base + 1500
+            scan_start = max_base            # parte do mínimo absoluto
+            scan_end   = max_base + 6000     # cobre toda a faixa do ano (~6000 bases)
             self._first_scan_done = True
             log.info(f"Range scan BOOTSTRAP paralelo ({max_workers} workers): bases {scan_start}-{scan_end}")
         else:
             scan_start = max(1, max_base - 300)
-            scan_end   = max_base + 50
+            scan_end   = max_base + 200      # incremental: busca novos além do máximo conhecido
             log.info(f"Range scan incremental paralelo ({max_workers} workers): bases {scan_start}-{scan_end}")
 
         bases = list(range(scan_end, scan_start - 1, -1))
@@ -924,22 +924,31 @@ class ReceiptCollector:
                 self._erro = str(e)
 
     def _background_range_scan(self):
-        """Executa range scan paralelo e adiciona ASNs novas ao estado incrementalmente."""
+        """Executa range scan paralelo e busca ASNs novas em paralelo (10 workers)."""
         log.info("Background range scan: início.")
         try:
             with self._lock:
                 known = set(self._known_keys)
             new_keys = self._discover_from_range_scan(already_discovered=known)
+            keys_to_fetch = [rk for rk in new_keys if rk not in self._known_keys]
+            log.info(f"Background range scan: {len(new_keys)} chaves descobertas, {len(keys_to_fetch)} novas.")
+
             added = 0
-            for rk in new_keys:
-                if rk not in self._known_keys:
-                    try:
-                        rec = self.fetch_and_store(rk)
-                        if rec:
-                            added += 1
-                    except Exception as e:
-                        log.debug(f"Range scan fetch {rk}: {e}")
-            log.info(f"Background range scan: {added} novas ASNs adicionadas ao estado.")
+
+            def _bg_fetch(rk):
+                try:
+                    return self.fetch_and_store(rk)
+                except Exception as e:
+                    log.debug(f"Range scan fetch {rk}: {e}")
+                    return None
+
+            with ThreadPoolExecutor(max_workers=10) as ex:
+                futures = {ex.submit(_bg_fetch, rk): rk for rk in keys_to_fetch}
+                for fut in as_completed(futures):
+                    if fut.result():
+                        added += 1
+
+            log.info(f"Background range scan concluído: {added} novas ASNs adicionadas.")
             self._range_scan_done = True
         except Exception as e:
             log.error(f"Erro no background range scan: {e}")
