@@ -11,7 +11,7 @@ import math
 import logging
 import threading
 import time
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from collections import defaultdict
 
 import requests
@@ -63,11 +63,12 @@ STATUS_LABEL = {
 
 STATUS_ORDER = ["pendente", "em_recebimento", "recebido", "fechado", "cancelado"]
 
-HOJE = date.today()
+_BRT = timezone(timedelta(hours=-3))
+HOJE = datetime.now(_BRT).date()
 
 
 def _hoje_str():
-    return date.today().isoformat()
+    return datetime.now(_BRT).date().isoformat()
 
 
 class WMSClient:
