@@ -43,26 +43,26 @@ DEPOSITOS = {
 }
 
 STATUS_MAP = {
-    "0":  "pendente",        # Novo
-    "2":  "pendente",        # Em trânsito
-    "3":  "em_recebimento",  # Pré-recebido
-    "4":  "pendente",        # Programado
-    "5":  "em_recebimento",  # No recebimento
-    "9":  "recebido",        # Recebido
-    "11": "fechado",         # Fechado
-    "15": "fechado",         # Verificado fechado
-    "20": "cancelado",       # Cancelado
-    "21": "recebido",        # RNERP
+    "0":  "pendente",         # Novo
+    "2":  "pendente",         # Em trânsito
+    "3":  "no_recebimento",   # Pré-recebido
+    "4":  "pendente",         # Programado
+    "5":  "no_recebimento",   # No recebimento
+    "9":  "recebido",         # Recebido
+    "11": "fechado",          # Fechado
+    "15": "fechado",          # Verificado fechado
+    "20": "cancelado",        # Cancelado
+    "21": "recebido",         # RNERP
 }
 
 STATUS_LABEL = {
-    "pendente":       "Pendente",
-    "em_recebimento": "Em Recebimento",
-    "recebido":       "Recebido",
-    "fechado":        "Fechado",
+    "pendente":        "Pendente",
+    "no_recebimento":  "No Recebimento",
+    "recebido":        "Recebido",
+    "fechado":         "Fechado",
 }
 
-STATUS_ORDER = ["pendente", "em_recebimento", "recebido", "fechado", "cancelado"]
+STATUS_ORDER = ["pendente", "no_recebimento", "recebido", "fechado", "cancelado"]
 
 _BRT = timezone(timedelta(hours=-3))
 HOJE = datetime.now(_BRT).date()
@@ -428,24 +428,21 @@ def _receipt_to_dict(receipt: dict, pack_cache: dict) -> dict:
 
     paletes = _calcula_paletes(details, pack_cache)
 
-    # Regras de status derivado (prioridade: WMS status 11/15 → fechado; demais por qtd)
-    diferenca = paletes["diferenca_paletes"]
+    # Status derivado espelha diretamente o status WMS conforme mapeamento do usuário:
+    # 0=Pendente | 5=No Recebimento | 9=Recebido | 11=Fechado
     total_rec  = paletes["total_recebido"]
     if status_raw in ("11", "15"):
         status_derivado = "fechado"
     elif status_raw == "20":
         status_derivado = "cancelado"
-    elif status_raw in ("9", "21") and diferenca <= 0:
-        status_derivado = "recebido"
-    elif total_rec > 0 and diferenca > 0:
-        # Recebimento iniciado mas ainda falta quantidade → em recebimento
-        status_derivado = "em_recebimento"
+    elif status_raw in ("9", "21"):
+        status_derivado = "recebido"   # WMS=Recebido → sempre Recebido
     elif status_raw in ("3", "5"):
-        status_derivado = "em_recebimento"
-    elif total_rec == 0:
-        status_derivado = "pendente"
+        status_derivado = "no_recebimento"
+    elif total_rec > 0:
+        status_derivado = "no_recebimento"  # iniciou recebimento sem status 5/9
     else:
-        status_derivado = status
+        status_derivado = STATUS_MAP.get(status_raw, "pendente")
 
     linhas = []
     for det in details:

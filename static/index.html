@@ -127,8 +127,8 @@ main{padding:20px 24px 40px;max-width:1600px;margin:0 auto}
 .scard-sub{font-size:11px;color:var(--muted)}
 .scard.pendente{border-left-color:var(--pendente)}
 .scard.pendente .scard-num{color:var(--pendente)}
-.scard.em_recebimento{border-left-color:var(--em-rec)}
-.scard.em_recebimento .scard-num{color:var(--em-rec)}
+.scard.no_recebimento{border-left-color:var(--em-rec)}
+.scard.no_recebimento .scard-num{color:var(--em-rec)}
 .scard.recebido{border-left-color:var(--recebido)}
 .scard.recebido .scard-num{color:var(--recebido)}
 .scard.fechado{border-left-color:var(--fechado)}
@@ -468,7 +468,7 @@ main{padding:20px 24px 40px;max-width:1600px;margin:0 auto}
   <!-- SUMMARY CARDS -->
   <div class="summary-cards" id="summaryCards">
     <div class="scard pendente"><div class="scard-num">—</div><div class="scard-lbl">Pendentes (hoje)</div></div>
-    <div class="scard em_recebimento"><div class="scard-num">—</div><div class="scard-lbl">Em Recebimento</div></div>
+    <div class="scard no_recebimento"><div class="scard-num">—</div><div class="scard-lbl">No Recebimento</div></div>
     <div class="scard recebido"><div class="scard-num">—</div><div class="scard-lbl">Recebidos</div></div>
     <div class="scard fechado"><div class="scard-num">—</div><div class="scard-lbl">Fechados</div></div>
     <div class="scard paletes"><div class="scard-num">—</div><div class="scard-lbl">Paletes do Dia</div></div>
@@ -489,7 +489,7 @@ main{padding:20px 24px 40px;max-width:1600px;margin:0 auto}
           <tr>
             <th>Depósito</th>
             <th>Pendentes</th>
-            <th>Em Recebimento</th>
+            <th>No Recebimento</th>
             <th>Recebidos</th>
             <th>Fechados</th>
             <th>Total Paletes</th>
@@ -525,7 +525,7 @@ main{padding:20px 24px 40px;max-width:1600px;margin:0 auto}
     <div class="scard recebido"><div class="scard-num" id="invAcuracia">—</div><div class="scard-lbl">Acurácia</div></div>
     <div class="scard fechado"><div class="scard-num" id="invConcluidos">—</div><div class="scard-lbl">Concluídos</div></div>
     <div class="scard pendente"><div class="scard-num" id="invPendentes">—</div><div class="scard-lbl">Pendentes</div></div>
-    <div class="scard em_recebimento"><div class="scard-num" id="invEmAndamento">—</div><div class="scard-lbl">Em C2/C3</div></div>
+    <div class="scard no_recebimento"><div class="scard-num" id="invEmAndamento">—</div><div class="scard-lbl">Em C2/C3</div></div>
     <div class="scard paletes"><div class="scard-num" id="invValorDiv">—</div><div class="scard-lbl">Valor Divergência</div></div>
   </div>
 
@@ -645,7 +645,7 @@ main{padding:20px 24px 40px;max-width:1600px;margin:0 auto}
           <select id="fStatus" onchange="renderDetail()">
             <option value="">Todos</option>
             <option value="pendente">Pendente</option>
-            <option value="em_recebimento">Em Recebimento</option>
+            <option value="no_recebimento">No Recebimento</option>
             <option value="recebido">Recebido</option>
             <option value="fechado">Fechado</option>
           </select>
@@ -714,19 +714,19 @@ let _intervalo    = 30;
 
 const STATUS_LABELS = {
   pendente:       "Pendente",
-  em_recebimento: "Em Recebimento",
+  no_recebimento: "No Recebimento",
   recebido:       "Recebido",
   fechado:        "Fechado",
 };
 const STATUS_COLORS = {
   pendente:       "var(--pendente)",
-  em_recebimento: "var(--em-rec)",
+  no_recebimento: "var(--em-rec)",
   recebido:       "var(--recebido)",
   fechado:        "var(--fechado)",
 };
 const STATUS_CSS = {
   pendente:       "sb-pendente",
-  em_recebimento: "sb-em-rec",
+  no_recebimento: "sb-em-rec",
   recebido:       "sb-recebido",
   fechado:        "sb-fechado",
 };
@@ -817,10 +817,10 @@ function renderFarol(data){
       <div class="scard-lbl">Pendentes</div>
       <div class="scard-sub">${(hoje.pendente||{}).paletes||0} paletes</div>
     </div>
-    <div class="scard em_recebimento">
-      <div class="scard-num">${(hoje.em_recebimento||{}).count||0}</div>
-      <div class="scard-lbl">Em Recebimento</div>
-      <div class="scard-sub">${(hoje.em_recebimento||{}).paletes||0} paletes</div>
+    <div class="scard no_recebimento">
+      <div class="scard-num">${(hoje.no_recebimento||{}).count||0}</div>
+      <div class="scard-lbl">No Recebimento</div>
+      <div class="scard-sub">${(hoje.no_recebimento||{}).paletes||0} paletes</div>
     </div>
     <div class="scard recebido">
       <div class="scard-num">${(hoje.recebido||{}).count||0}</div>
@@ -860,15 +860,15 @@ function renderFarol(data){
 function renderDepCard(dep, info, totalHoje){
   const hoje  = info.hoje  || {};
   const nomes = {
-    pendente:"Pendente",em_recebimento:"Em Recebimento",recebido:"Recebido",fechado:"Fechado"
+    pendente:"Pendente",no_recebimento:"No Recebimento",recebido:"Recebido",fechado:"Fechado"
   };
   const cssMap = {
-    pendente:"sb-pendente",em_recebimento:"sb-em-rec",recebido:"sb-recebido",fechado:"sb-fechado"
+    pendente:"sb-pendente",no_recebimento:"sb-em-rec",recebido:"sb-recebido",fechado:"sb-fechado"
   };
   const total = _countAll(hoje);
   const paletes = info.total_paletes_dia || 0;
 
-  const boxes = ["pendente","em_recebimento","recebido","fechado"].map(s => {
+  const boxes = ["pendente","no_recebimento","recebido","fechado"].map(s => {
     const cnt = (hoje[s]||{}).count || 0;
     const pal = (hoje[s]||{}).paletes || 0;
     const pct = total > 0 ? Math.round(cnt/total*100) : 0;
@@ -881,12 +881,12 @@ function renderDepCard(dep, info, totalHoje){
   }).join("");
 
   const cntPend = (hoje["pendente"]||{}).count || 0;
-  const cntER   = (hoje["em_recebimento"]||{}).count || 0;
+  const cntER   = (hoje["no_recebimento"]||{}).count || 0;
   const cntRec  = (hoje["recebido"]||{}).count || 0;
   const cntFec  = (hoje["fechado"]||{}).count || 0;
   const partes  = [];
   if (cntPend) partes.push(`<span class="tot-pend">${cntPend} pend.</span>`);
-  if (cntER)   partes.push(`<span class="tot-er">${cntER} em rec.</span>`);
+  if (cntER)   partes.push(`<span class="tot-er">${cntER} no rec.</span>`);
   if (cntRec)  partes.push(`<span class="tot-rec">${cntRec} rec.</span>`);
   if (cntFec)  partes.push(`<span class="tot-fec">${cntFec} fec.</span>`);
   const totalizador = total > 0
@@ -912,7 +912,7 @@ function renderBacklog(depositos){
   const tfoot = document.getElementById("backlogFoot");
   if (!depositos) { tbody.innerHTML = ""; tfoot.innerHTML = ""; return; }
 
-  const STATUS_BL = ["pendente","em_recebimento","recebido","fechado"];
+  const STATUS_BL = ["pendente","no_recebimento","recebido","fechado"];
   let totPend = 0, totER = 0, totRec = 0, totFec = 0, totPal = 0;
 
   const rows = Object.entries(depositos)
@@ -925,7 +925,7 @@ function renderBacklog(depositos){
       const anyBl = STATUS_BL.some(st => ((bl[st]||{}).count||0) > 0);
       if (!anyBl) return "";
       totPend += (bl.pendente||{}).count||0;
-      totER   += (bl.em_recebimento||{}).count||0;
+      totER   += (bl.no_recebimento||{}).count||0;
       totRec  += (bl.recebido||{}).count||0;
       totFec  += (bl.fechado||{}).count||0;
       totPal  += totalPal;
@@ -933,7 +933,7 @@ function renderBacklog(depositos){
       return `<tr>
         <td class="bl-dep">DEPOSITO: ${blLabel}</td>
         <td>${countBadge(bl.pendente,"pend")}</td>
-        <td>${countBadge(bl.em_recebimento,"emrec")}</td>
+        <td>${countBadge(bl.no_recebimento,"emrec")}</td>
         <td>${countBadge(bl.recebido,"rec")}</td>
         <td>${countBadge(bl.fechado,"fec")}</td>
         <td><strong>${totalPal}</strong></td>
@@ -960,7 +960,7 @@ function renderBacklog(depositos){
 function countBadge(obj, cls){
   const n = (obj||{}).count || 0;
   if (n === 0) return `<span class="count-badge cb-zero">—</span>`;
-  return `<span class="count-badge cb-${cls}" onclick="abrirDetalhe('','${cls === 'pend' ? 'pendente' : cls === 'emrec' ? 'em_recebimento' : cls === 'rec' ? 'recebido' : 'fechado'}','backlog')" style="cursor:pointer">${n}</span>`;
+  return `<span class="count-badge cb-${cls}" onclick="abrirDetalhe('','${cls === 'pend' ? 'pendente' : cls === 'emrec' ? 'no_recebimento' : cls === 'rec' ? 'recebido' : 'fechado'}','backlog')" style="cursor:pointer">${n}</span>`;
 }
 
 function _countAll(obj){
@@ -1611,17 +1611,17 @@ function _exportarCompletoExcel(farol, totais, depositos, linhas, geradoEm, data
 
   // Dashboard — totais globais
   rows.push(["DASHBOARD GERAL"].join(sep));
-  rows.push(["","Pendente","Em Recebimento","Recebido","Fechado","Total Receb.","Total Paletes"].join(sep));
+  rows.push(["","Pendente","No Recebimento","Recebido","Fechado","Total Receb.","Total Paletes"].join(sep));
   const th = (totais.hoje || {});
   const tb = (totais.backlog || {});
-  const totalHoje = ["pendente","em_recebimento","recebido","fechado"].reduce((s,st)=>s+((th[st]||{}).count||0),0);
-  const totalBl   = ["pendente","em_recebimento","recebido","fechado"].reduce((s,st)=>s+((tb[st]||{}).count||0),0);
+  const totalHoje = ["pendente","no_recebimento","recebido","fechado"].reduce((s,st)=>s+((th[st]||{}).count||0),0);
+  const totalBl   = ["pendente","no_recebimento","recebido","fechado"].reduce((s,st)=>s+((tb[st]||{}).count||0),0);
   rows.push(["Hoje",
-    (th.pendente||{}).count||0, (th.em_recebimento||{}).count||0,
+    (th.pendente||{}).count||0, (th.no_recebimento||{}).count||0,
     (th.recebido||{}).count||0, (th.fechado||{}).count||0,
     totalHoje, totais.total_paletes_dia||0].join(sep));
   rows.push(["Backlog",
-    (tb.pendente||{}).count||0, (tb.em_recebimento||{}).count||0,
+    (tb.pendente||{}).count||0, (tb.no_recebimento||{}).count||0,
     (tb.recebido||{}).count||0, (tb.fechado||{}).count||0,
     totalBl, ""].join(sep));
   rows.push([`Total Geral`, "", "", "", "", totais.total_receipts||0, ""].join(sep));
@@ -1633,7 +1633,7 @@ function _exportarCompletoExcel(farol, totais, depositos, linhas, geradoEm, data
   for (const [dep, info] of Object.entries(depositos).filter(([k])=>k!=="OUTROS").sort(([a],[b])=>parseInt(a)-parseInt(b))) {
     const hj = info.hoje || {};
     rows.push([dep, info.supplier_name||info.nome||dep,
-      (hj.pendente||{}).count||0, (hj.em_recebimento||{}).count||0,
+      (hj.pendente||{}).count||0, (hj.no_recebimento||{}).count||0,
       (hj.recebido||{}).count||0, (hj.fechado||{}).count||0,
       info.total_paletes_dia||0].join(sep));
   }
@@ -1664,7 +1664,7 @@ function _exportarCompletoPDF(farol, totais, depositos, linhas, geradoEm, dataFi
   // Cards do dashboard
   const dashCards = [
     {lbl:"Pendentes (hoje)", val:(th.pendente||{}).count||0, cor:"#F59E0B"},
-    {lbl:"Em Recebimento",   val:(th.em_recebimento||{}).count||0, cor:"#3B82F6"},
+    {lbl:"No Recebimento",   val:(th.no_recebimento||{}).count||0, cor:"#3B82F6"},
     {lbl:"Recebidos (hoje)", val:(th.recebido||{}).count||0, cor:"#22C55E"},
     {lbl:"Fechados (hoje)",  val:(th.fechado||{}).count||0, cor:"#6B7280"},
     {lbl:"Paletes do Dia",   val:totais.total_paletes_dia||0, cor:"#2563EB"},
@@ -1683,7 +1683,7 @@ function _exportarCompletoPDF(farol, totais, depositos, linhas, geradoEm, dataFi
         <td><strong>${dep}</strong></td>
         <td>${info.supplier_name||info.nome||dep}</td>
         <td style="color:#F59E0B;font-weight:700">${(hj.pendente||{}).count||0}</td>
-        <td style="color:#3B82F6;font-weight:700">${(hj.em_recebimento||{}).count||0}</td>
+        <td style="color:#3B82F6;font-weight:700">${(hj.no_recebimento||{}).count||0}</td>
         <td style="color:#22C55E;font-weight:700">${(hj.recebido||{}).count||0}</td>
         <td style="color:#6B7280;font-weight:700">${(hj.fechado||{}).count||0}</td>
         <td style="font-weight:700">${info.total_paletes_dia||0}</td>
