@@ -814,7 +814,7 @@ function renderFarol(data){
   sc.innerHTML = `
     <div class="scard pendente">
       <div class="scard-num">${(hoje.pendente||{}).count||0}</div>
-      <div class="scard-lbl">Pendentes</div>
+      <div class="scard-lbl">Pendentes (hoje)</div>
       <div class="scard-sub">${(hoje.pendente||{}).paletes||0} paletes</div>
     </div>
     <div class="scard em_recebimento">
@@ -829,13 +829,13 @@ function renderFarol(data){
     </div>
     <div class="scard fechado">
       <div class="scard-num">${(hoje.fechado||{}).count||0}</div>
-      <div class="scard-lbl">Fechados (hoje)</div>
+      <div class="scard-lbl">Fechados</div>
       <div class="scard-sub">${(hoje.fechado||{}).paletes||0} paletes</div>
     </div>
     <div class="scard paletes">
       <div class="scard-num">${hojeTotal}</div>
-      <div class="scard-lbl">Total Ativo</div>
-      <div class="scard-sub">${totais.total_paletes_dia||0} paletes hoje</div>
+      <div class="scard-lbl">Total do Dia</div>
+      <div class="scard-sub">${totais.total_paletes_dia||0} paletes</div>
     </div>
   `;
 

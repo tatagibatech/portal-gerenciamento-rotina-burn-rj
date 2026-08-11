@@ -907,14 +907,9 @@ class ReceiptCollector:
             if not resultado[dep]["supplier_name"] and rec.get("supplier_name"):
                 resultado[dep]["supplier_name"] = rec["supplier_name"]
 
-            # Ativos (pendente/em_recebimento/recebido) vão sempre para o card de hoje.
-            # Fechados/cancelados são filtrados pela data de fechamento/atualização.
-            if status in ("pendente", "em_recebimento", "recebido"):
-                is_hoje = True
-            else:
-                data_atual = rec.get("data_atualizacao") or rec.get("data_criacao") or ""
-                ref_date = data_filtro if data_filtro else hoje_str
-                is_hoje = (data_atual[:10] == ref_date)
+            data_atual = rec.get("data_criacao") or rec.get("data_atualizacao") or ""
+            ref_date   = data_filtro if data_filtro else hoje_str
+            is_hoje    = (data_atual[:10] == ref_date)
 
             bucket = "hoje" if is_hoje else "backlog"
             resultado[dep][bucket][status]["count"]      += 1
@@ -964,12 +959,8 @@ class ReceiptCollector:
             st = rec.get("status") or "pendente"
             if status and st != status:
                 continue
-            # Mesma lógica do get_farol: ativos sempre em "hoje"
-            if st in ("pendente", "em_recebimento", "recebido"):
-                is_hoje = True
-            else:
-                data_atual = rec.get("data_atualizacao") or rec.get("data_criacao") or ""
-                is_hoje = (data_atual[:10] == hoje_str)
+            data_atual = rec.get("data_criacao") or rec.get("data_atualizacao") or ""
+            is_hoje    = (data_atual[:10] == hoje_str)
             if bucket == "hoje" and not is_hoje:
                 continue
             if bucket == "backlog" and is_hoje:
