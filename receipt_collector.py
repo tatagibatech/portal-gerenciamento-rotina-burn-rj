@@ -73,9 +73,15 @@ def _hoje_str():
     return datetime.now(_BRT).date().isoformat()
 
 
-def _meses_validos() -> set:
-    """Retorna YYYY-MM do mês atual e do mês anterior (janela do backlog)."""
+def _meses_validos() -> set | None:
+    """
+    Janela de meses válidos para o backlog (mês atual + anterior).
+    Retorna None em agosto/2026 — histórico completo sem restrição.
+    A partir de setembro/2026 aplica a janela de 2 meses automaticamente.
+    """
     hoje = datetime.now(_BRT).date()
+    if hoje.year == 2026 and hoje.month <= 8:
+        return None  # agosto/2026: sem filtro, exibe todo o histórico
     mes_atual = hoje.strftime("%Y-%m")
     if hoje.month == 1:
         mes_anterior = f"{hoje.year - 1}-12"
@@ -1201,8 +1207,8 @@ class ReceiptCollector:
             ref_date   = data_filtro if data_filtro else hoje_str
             is_hoje    = (data_atual == ref_date)
 
-            # Backlog: ignora ASNs anteriores ao mês passado
-            if not is_hoje and data_atual[:7] not in meses_validos:
+            # Backlog: ignora ASNs fora da janela (mês atual + anterior), a partir de set/2026
+            if meses_validos and not is_hoje and data_atual[:7] not in meses_validos:
                 continue
 
             bucket = "hoje" if is_hoje else "backlog"
@@ -1261,8 +1267,8 @@ class ReceiptCollector:
                 continue
             if bucket == "backlog" and is_hoje:
                 continue
-            # Backlog: ignora ASNs anteriores ao mês passado
-            if not is_hoje and data_atual[:7] not in meses_validos:
+            # Backlog: ignora ASNs fora da janela (mês atual + anterior), a partir de set/2026
+            if meses_validos and not is_hoje and data_atual[:7] not in meses_validos:
                 continue
             resultado.append(rec)
         return resultado
