@@ -805,6 +805,59 @@ class ReceiptCollector:
 
         return keys
 
+    # ------------------------------------------------------------------ mini range scan
+
+    def _scan_bases_quick(self, bases: list, max_workers: int = 10, timeout: int = 3) -> set:
+        """
+        Sonda rapidamente uma lista de bases e retorna receiptkeys tipo 8 encontradas.
+        Usado para mini scan incremental (ranges pequenos, ~20 bases).
+        Render→WMS ~200ms/req, 10 workers: ~400ms para 20 bases.
+        """
+        client = self._client
+
+        def probe(base):
+            local = set()
+            try:
+                r = client.get(f"advancedshipnotice/{base}.1", timeout=timeout)
+            except Exception:
+                return local
+            if r.status_code != 200:
+                return local
+            try:
+                data = r.json()
+                tipo = str(data.get("receipttype") or data.get("type") or "").strip()
+                if tipo and tipo not in TIPO_ORDEM_PRODUCAO:
+                    return local  # não é tipo 8
+            except Exception:
+                pass
+            local.add(f"{base}.1")
+            miss = 0
+            for sub in range(2, 25):
+                try:
+                    r2 = client.get(f"advancedshipnotice/{base}.{sub}", timeout=timeout)
+                    if r2.status_code == 200:
+                        local.add(f"{base}.{sub}")
+                        miss = 0
+                    else:
+                        miss += 1
+                        if miss >= 3:
+                            break
+                except Exception:
+                    miss += 1
+                    if miss >= 3:
+                        break
+            return local
+
+        found = set()
+        with ThreadPoolExecutor(max_workers=max_workers) as ex:
+            futures = {ex.submit(probe, b): b for b in bases}
+            for fut in as_completed(futures):
+                try:
+                    found.update(fut.result())
+                except Exception:
+                    pass
+        return found
+
     # ------------------------------------------------------------------ pack cache
 
     def _ensure_pack(self, packkey: str):
@@ -834,11 +887,11 @@ class ReceiptCollector:
           é feita localmente pelo script carga_inicial_asn.py.
 
         INCREMENTAL (histórico já carregado):
-          1. Descobre novas ASNs apenas via stages (POST inventorybalance —
-             que SIM retorna dados). Exports retornam 405, são pulados.
-          2. Re-busca apenas ASNs ABERTAS criadas hoje ou ontem para atualização
-             de status (tipo 8, ontem e hoje = "apenas busca atualização de ontem e hoje").
-          3. ASNs fechadas ou criadas antes de ontem: não são re-buscadas.
+          1. Mini range scan das ~20 bases além do máximo conhecido: detecta ASNs
+             novas (status 0/pendente) em ~400ms assim que criadas no WMS.
+          2. Stages (POST inventorybalance): descobre ASNs que chegaram ao STG.PA.*.
+          3. Re-busca ASNs ABERTAS criadas hoje ou ontem para atualização de status.
+          4. ASNs fechadas ou anteriores a ontem: ignoradas no ciclo automático.
         """
         log.info("Iniciando refresh dos recebimentos PA...")
         try:
@@ -866,12 +919,41 @@ class ReceiptCollector:
                         f"(exp={len(keys_exports)}, stg={len(keys_stages)}, cache={len(known_cache)})."
                     )
                 else:
-                    # Incremental: só stages (exports retornam 405 neste WMS)
+                    # Incremental: stages + mini range scan de novas bases tipo 8
                     keys_stages    = self._discover_from_stages()
                     new_via_stages = keys_stages - set(existing.keys())
-                    type_map = {k: "" for k in new_via_stages}
-                    if new_via_stages:
-                        log.info(f"Incremental: {len(new_via_stages)} novas via stages.")
+                    type_map       = {k: "" for k in new_via_stages}
+
+                    # Mini range scan: detecta ASNs recém-criadas (incluindo status 0/novo).
+                    # Sonda apenas bases ainda não indexadas além do máximo conhecido.
+                    # ~20 bases × 10 workers × 200ms latência ≈ 400ms por ciclo.
+                    with self._lock:
+                        known = set(self._known_keys)
+                    known_bases = {
+                        int(k.split(".")[0])
+                        for k in known
+                        if "." in k and k.split(".")[0].isdigit()
+                    }
+                    if known_bases:
+                        max_base = max(known_bases)
+                        # -5: bases recentes que podem ter sido puladas na carga inicial
+                        # +20: novas bases criadas desde o último ciclo
+                        bases_novas = [
+                            b for b in range(max(1, max_base - 5), max_base + 21)
+                            if b not in known_bases
+                        ]
+                        if bases_novas:
+                            scan_result = self._scan_bases_quick(
+                                bases_novas, max_workers=10, timeout=3
+                            )
+                            novel = scan_result - set(existing.keys())
+                            if novel:
+                                log.info(
+                                    f"Mini scan: {len(novel)} novas ASNs tipo 8 descobertas "
+                                    f"(janela {max_base-5}..{max_base+20})."
+                                )
+                                for k in novel:
+                                    type_map[k] = ""
 
             self._known_keys.update(type_map.keys())
 
