@@ -6,12 +6,14 @@ Backend Flask — serve o dashboard e as APIs de dados.
 import logging
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 
 from receipt_collector import ReceiptCollector, DEPOSITOS, STATUS_ORDER
+
+_BRT = timezone(timedelta(hours=-3))
 
 logging.basicConfig(
     level=logging.INFO,
@@ -171,7 +173,7 @@ def api_status():
         "ultima_atualizacao":  state["ultima_atualizacao"],
         "total_receipts":      len(state["receipts"]),
         "erro":                state["erro"],
-        "server_time":         datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+        "server_time":         datetime.now(_BRT).strftime("%d/%m/%Y %H:%M:%S"),
     })
 
 
@@ -372,7 +374,7 @@ def api_inventario_upload():
             return jsonify({"ok": False, "msg": "body vazio"}), 400
         global _inventario_dados
         _inventario_dados = dados
-        _inventario_dados["recebido_em"] = datetime.now().isoformat(timespec="seconds")
+        _inventario_dados["recebido_em"] = datetime.now(_BRT).isoformat(timespec="seconds")
         log.info(f"Inventário recebido: {dados.get('total_asns',0)} ASNs, {len(dados.get('linhas',[]))} pares loc×sku")
         return jsonify({"ok": True, "total_linhas": len(dados.get("linhas", []))})
     except Exception as e:

@@ -898,7 +898,7 @@ class ReceiptCollector:
             # ── Atualiza estado (fase 1 completa) ────────────────────────────
             with self._lock:
                 self._receipts = updated
-                self._ultima_atualizacao = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+                self._ultima_atualizacao = datetime.now(_BRT).strftime("%d/%m/%Y %H:%M:%S")
                 self._erro = None
 
             self._save_cache()
