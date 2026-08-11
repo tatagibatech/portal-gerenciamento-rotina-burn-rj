@@ -1177,17 +1177,8 @@ class ReceiptCollector:
             if not resultado[dep]["supplier_name"] and rec.get("supplier_name"):
                 resultado[dep]["supplier_name"] = rec["supplier_name"]
 
-            # Usa data operacional pelo status: fechamento > recebimento > criação
-            st_raw_f  = rec.get("status_raw", "")
-            data_fec_f = (rec.get("data_fechamento") or "")[:10]
-            data_rec_f = (rec.get("data_recebimento") or "")[:10]
-            data_cri_f = (rec.get("data_criacao") or "")[:10]
-            if st_raw_f in ("11", "15") and data_fec_f:
-                data_atual = data_fec_f
-            elif data_rec_f:
-                data_atual = data_rec_f
-            else:
-                data_atual = data_cri_f
+            # Bucket pela data de CRIAÇÃO (adddate): hoje = criada hoje; backlog = demais
+            data_atual = (rec.get("data_criacao") or "")[:10]
             ref_date   = data_filtro if data_filtro else hoje_str
             is_hoje    = (data_atual == ref_date)
 
@@ -1239,16 +1230,8 @@ class ReceiptCollector:
             st = rec.get("status") or "pendente"
             if status and st != status:
                 continue
-            st_raw_r  = rec.get("status_raw", "")
-            data_fec_r = (rec.get("data_fechamento") or "")[:10]
-            data_rec_r = (rec.get("data_recebimento") or "")[:10]
-            data_cri_r = (rec.get("data_criacao") or "")[:10]
-            if st_raw_r in ("11", "15") and data_fec_r:
-                data_atual = data_fec_r
-            elif data_rec_r:
-                data_atual = data_rec_r
-            else:
-                data_atual = data_cri_r
+            # Bucket pela data de criação (adddate): hoje = criada hoje; backlog = demais
+            data_atual = (rec.get("data_criacao") or "")[:10]
             is_hoje    = (data_atual == hoje_str)
             if bucket == "hoje" and not is_hoje:
                 continue
