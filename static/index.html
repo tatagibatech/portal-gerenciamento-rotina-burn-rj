@@ -787,26 +787,12 @@ async function forcarRefresh() {
 /* ══════════════════════════════════════════════════════════════
    FAROL — RENDER
 ══════════════════════════════════════════════════════════════ */
-function _mergeStatus(a, b, st){
-  return {
-    count:   ((a[st]||{}).count  ||0) + ((b[st]||{}).count  ||0),
-    paletes: ((a[st]||{}).paletes||0) + ((b[st]||{}).paletes||0),
-  };
-}
-
 function renderFarol(data){
   if (!data) return;
 
-  const totais  = data.totais  || {};
-  const hoje    = totais.hoje   || {};
-  const backlog = totais.backlog || {};
-
-  // Merged: hoje + backlog para todos os status
-  const pend  = _mergeStatus(hoje, backlog, "pendente");
-  const emrec = _mergeStatus(hoje, backlog, "em_recebimento");
-  const rec   = _mergeStatus(hoje, backlog, "recebido");
-  const fec   = _mergeStatus(hoje, backlog, "fechado");
-  const totalGeral = pend.count + emrec.count + rec.count + fec.count;
+  const totais = data.totais || {};
+  const hoje   = totais.hoje || {};
+  const hojeTotal = _countAll(hoje);
 
   // Atualizar info bar
   document.getElementById("ultimaAtualizacao").textContent = data.ultima_atualizacao || "—";
@@ -823,33 +809,33 @@ function renderFarol(data){
     lbl.textContent = "Conectado";
   }
 
-  // Summary cards — exibe total acumulado (hoje + backlog)
+  // Summary cards — exibe apenas o dia atual (hoje)
   const sc = document.getElementById("summaryCards");
   sc.innerHTML = `
     <div class="scard pendente">
-      <div class="scard-num">${pend.count}</div>
+      <div class="scard-num">${(hoje.pendente||{}).count||0}</div>
       <div class="scard-lbl">Pendentes</div>
-      <div class="scard-sub">${pend.paletes} paletes</div>
+      <div class="scard-sub">${(hoje.pendente||{}).paletes||0} paletes</div>
     </div>
     <div class="scard em_recebimento">
-      <div class="scard-num">${emrec.count}</div>
+      <div class="scard-num">${(hoje.em_recebimento||{}).count||0}</div>
       <div class="scard-lbl">Em Recebimento</div>
-      <div class="scard-sub">${emrec.paletes} paletes</div>
+      <div class="scard-sub">${(hoje.em_recebimento||{}).paletes||0} paletes</div>
     </div>
     <div class="scard recebido">
-      <div class="scard-num">${rec.count}</div>
+      <div class="scard-num">${(hoje.recebido||{}).count||0}</div>
       <div class="scard-lbl">Recebidos</div>
-      <div class="scard-sub">${rec.paletes} paletes</div>
+      <div class="scard-sub">${(hoje.recebido||{}).paletes||0} paletes</div>
     </div>
     <div class="scard fechado">
-      <div class="scard-num">${fec.count}</div>
+      <div class="scard-num">${(hoje.fechado||{}).count||0}</div>
       <div class="scard-lbl">Fechados</div>
-      <div class="scard-sub">${fec.paletes} paletes</div>
+      <div class="scard-sub">${(hoje.fechado||{}).paletes||0} paletes</div>
     </div>
     <div class="scard paletes">
-      <div class="scard-num">${totalGeral}</div>
-      <div class="scard-lbl">Total ASNs</div>
-      <div class="scard-sub">${totais.total_paletes_dia||0} paletes hoje</div>
+      <div class="scard-num">${hojeTotal}</div>
+      <div class="scard-lbl">Total do Dia</div>
+      <div class="scard-sub">${totais.total_paletes_dia||0} paletes</div>
     </div>
   `;
 
@@ -864,36 +850,29 @@ function renderFarol(data){
   if (deps.length === 0) {
     grid.innerHTML = '<div class="no-data-card">Nenhum dado de depósito disponível</div>';
   } else {
-    grid.innerHTML = deps.map(([dep, info]) => renderDepCard(dep, info)).join("");
+    grid.innerHTML = deps.map(([dep, info]) => renderDepCard(dep, info, hojeTotal)).join("");
   }
 
   // Backlog
   renderBacklog(data.depositos);
 }
 
-function renderDepCard(dep, info){
-  const hoje    = info.hoje    || {};
-  const backlog = info.backlog || {};
+function renderDepCard(dep, info, totalHoje){
+  const hoje  = info.hoje  || {};
   const nomes = {
     pendente:"Pendente",em_recebimento:"Em Recebimento",recebido:"Recebido",fechado:"Fechado"
   };
   const cssMap = {
     pendente:"sb-pendente",em_recebimento:"sb-em-rec",recebido:"sb-recebido",fechado:"sb-fechado"
   };
-
-  // Merged por status (hoje + backlog)
-  const merged = {};
-  ["pendente","em_recebimento","recebido","fechado"].forEach(s => {
-    merged[s] = _mergeStatus(hoje, backlog, s);
-  });
-  const total   = Object.values(merged).reduce((s,v) => s + v.count, 0);
+  const total = _countAll(hoje);
   const paletes = info.total_paletes_dia || 0;
 
   const boxes = ["pendente","em_recebimento","recebido","fechado"].map(s => {
-    const cnt = merged[s].count;
-    const pal = merged[s].paletes;
+    const cnt = (hoje[s]||{}).count || 0;
+    const pal = (hoje[s]||{}).paletes || 0;
     const pct = total > 0 ? Math.round(cnt/total*100) : 0;
-    return `<div class="status-box ${cssMap[s]}" onclick="abrirDetalhe('${dep}','${s}','todos')">
+    return `<div class="status-box ${cssMap[s]}" onclick="abrirDetalhe('${dep}','${s}','hoje')">
       <div class="sb-label">${nomes[s]}</div>
       <div class="sb-count">${cnt}</div>
       <div class="sb-pct" style="color:${STATUS_COLORS[s]}">${pct}%</div>
@@ -901,11 +880,15 @@ function renderDepCard(dep, info){
     </div>`;
   }).join("");
 
-  const partes = [];
-  if (merged.pendente.count)       partes.push(`<span class="tot-pend">${merged.pendente.count} pend.</span>`);
-  if (merged.em_recebimento.count) partes.push(`<span class="tot-er">${merged.em_recebimento.count} em rec.</span>`);
-  if (merged.recebido.count)       partes.push(`<span class="tot-rec">${merged.recebido.count} rec.</span>`);
-  if (merged.fechado.count)        partes.push(`<span class="tot-fec">${merged.fechado.count} fec.</span>`);
+  const cntPend = (hoje["pendente"]||{}).count || 0;
+  const cntER   = (hoje["em_recebimento"]||{}).count || 0;
+  const cntRec  = (hoje["recebido"]||{}).count || 0;
+  const cntFec  = (hoje["fechado"]||{}).count || 0;
+  const partes  = [];
+  if (cntPend) partes.push(`<span class="tot-pend">${cntPend} pend.</span>`);
+  if (cntER)   partes.push(`<span class="tot-er">${cntER} em rec.</span>`);
+  if (cntRec)  partes.push(`<span class="tot-rec">${cntRec} rec.</span>`);
+  if (cntFec)  partes.push(`<span class="tot-fec">${cntFec} fec.</span>`);
   const totalizador = total > 0
     ? `<div class="dep-totalizador">${partes.join(" &bull; ")} &nbsp;|&nbsp; <strong>Total: ${total} ASNs</strong></div>`
     : "";

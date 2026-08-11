@@ -149,15 +149,36 @@ def main():
     keys = set()
 
     if args.excel:
-        # Lê receiptkeys diretamente do Excel (coluna A, a partir da linha 2)
+        # Lê receiptkeys do Excel — detecta automaticamente a coluna RECEIPTKEY
         try:
-            import openpyxl
+            import openpyxl, re
             wb = openpyxl.load_workbook(args.excel, read_only=True, data_only=True)
-            ws = wb.active
-            for row in ws.iter_rows(min_row=2, max_col=1, values_only=True):
-                val = row[0]
-                if val:
-                    keys.add(str(val).strip())
+            # Prefere a sheet 'Data'; senão usa a ativa
+            ws = wb['Data'] if 'Data' in wb.sheetnames else wb.active
+            rk_col = None
+            data_start_row = 2
+            # Localiza a coluna RECEIPTKEY nos primeiros 3 cabeçalhos
+            for ri, row in enumerate(ws.iter_rows(min_row=1, max_row=3, values_only=True), 1):
+                for ci, cell in enumerate(row):
+                    if cell and str(cell).strip().upper() in ("RECEIPTKEY", "RECEIPT KEY", "RECEIPT_KEY", "ASN/RECEBIMENTO"):
+                        rk_col = ci
+                        data_start_row = ri + 1  # dados começam na linha seguinte ao header
+                        break
+                if rk_col is not None:
+                    break
+            if rk_col is None:
+                rk_col = 0  # fallback: coluna A
+            print(f"Excel: coluna da receiptkey = {rk_col+1} (1-based), dados a partir da linha {data_start_row}.")
+            rk_pattern = re.compile(r'^\d+\.\d+$')
+            for row in ws.iter_rows(min_row=data_start_row, values_only=True):
+                if not row or len(row) <= rk_col:
+                    continue
+                val = row[rk_col]
+                if not val:
+                    continue
+                s = str(val).strip()
+                if rk_pattern.match(s):  # aceita apenas formato base.sub
+                    keys.add(s)
             wb.close()
             print(f"Excel: {len(keys)} receiptkeys carregadas de '{args.excel}'.")
         except ImportError:
