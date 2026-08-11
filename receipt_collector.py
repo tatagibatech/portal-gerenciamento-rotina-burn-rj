@@ -177,6 +177,41 @@ class WMSClient:
                 pass
         return list(found.values())
 
+    def list_asn_by_type(self, receipttype="8", page_size=500, max_pages=40) -> set:
+        """Descobre receiptkeys consultando o WMS por receipttype (ex: 8=OP). Pagina automaticamente."""
+        keys = set()
+        for offset in range(0, max_pages * page_size, page_size):
+            params = {
+                "storerkey":      "BURN",
+                "receipttype":    receipttype,
+                "recordcount":    page_size,
+                "startingrecord": offset,
+            }
+            try:
+                r = self.get("advancedshipnotice", params=params, timeout=120)
+                if r.status_code != 200:
+                    break
+                data = r.json()
+                if isinstance(data, list):
+                    for rec in data:
+                        k = rec.get("receiptkey") or ""
+                        if k:
+                            keys.add(k)
+                    if len(data) < page_size:
+                        break
+                elif isinstance(data, dict):
+                    k = data.get("receiptkey") or ""
+                    if k:
+                        keys.add(k)
+                    break
+                else:
+                    break
+            except Exception as e:
+                log.warning(f"list_asn_by_type erro (offset={offset}): {e}")
+                break
+        log.info(f"list_asn_by_type(type={receipttype}): {len(keys)} receiptkeys encontrados.")
+        return keys
+
     def list_asn_by_date(self, date_str: str, page_size=500):
         """Lista ASNs abertas por data via endpoint advancedshipnotice."""
         found = {}
@@ -486,7 +521,8 @@ def _receipt_to_dict(receipt: dict, pack_cache: dict) -> dict:
 class ReceiptCollector:
     """Thread de coleta periódica dos recebimentos PA."""
 
-    CACHE_FILE = "receipt_keys_cache.json"
+    CACHE_FILE      = "receipt_keys_cache.json"
+    DATA_CACHE_FILE = "receipt_data_cache.json"   # cache completo dos dados
 
     def __init__(self, intervalo: int = 30):
         self._client     = WMSClient()
@@ -499,23 +535,43 @@ class ReceiptCollector:
         self._erro       = None
         self._thread     = None
         self._running    = False
-        self._first_scan_done = False   # controla janela ampla no bootstrap
+        self._first_scan_done = False
         self._load_cache()
 
     # ------------------------------------------------------------------ cache
 
     def _load_cache(self):
+        """Carrega dados completos do disco (sobrevive a restarts, não a deploys)."""
+        # 1. Tenta carregar dados completos
+        try:
+            with open(self.DATA_CACHE_FILE, encoding="utf-8") as f:
+                data = json.load(f)
+            self._receipts   = data.get("receipts", {})
+            self._known_keys = set(data.get("keys", []))
+            self._ultima_atualizacao = data.get("ultima_atualizacao")
+            log.info(f"Cache de dados carregado: {len(self._receipts)} receipts, {len(self._known_keys)} chaves.")
+            return
+        except Exception:
+            pass
+        # 2. Fallback: só as chaves conhecidas
         try:
             with open(self.CACHE_FILE) as f:
                 self._known_keys = set(json.load(f))
-            log.info(f"Cache carregado: {len(self._known_keys)} chaves.")
+            log.info(f"Cache de chaves carregado: {len(self._known_keys)} chaves.")
         except Exception:
             self._known_keys = set()
 
     def _save_cache(self):
         try:
+            with self._lock:
+                receipts_snap = dict(self._receipts)
+                keys_snap     = list(self._known_keys)
+                ts            = self._ultima_atualizacao
+            with open(self.DATA_CACHE_FILE, "w", encoding="utf-8") as f:
+                json.dump({"receipts": receipts_snap, "keys": keys_snap,
+                           "ultima_atualizacao": ts}, f, ensure_ascii=False)
             with open(self.CACHE_FILE, "w") as f:
-                json.dump(list(self._known_keys), f)
+                json.dump(keys_snap, f)
         except Exception as e:
             log.warning(f"Erro ao salvar cache: {e}")
 
@@ -751,47 +807,62 @@ class ReceiptCollector:
     def _refresh(self):
         log.info("Iniciando refresh dos recebimentos PA...")
         try:
-            # 1. Descobrir novas chaves
-            keys_exports    = self._discover_from_exports()
-            keys_stages     = self._discover_from_stages()
-            # Passa exports+stages para o range scan usar como referência de max_base
-            keys_range_scan = self._discover_from_range_scan(keys_exports | keys_stages)
-            all_keys = keys_exports | keys_stages | keys_range_scan | self._known_keys
+            # 1. Descoberta PRIMÁRIA: query por receipttype=8 no WMS
+            type_keys = self._client.list_asn_by_type(receipttype="8")
 
-            new_receipts = {}
+            # Fallback se a query retornar vazio (endpoint não suportado)
+            if not type_keys:
+                log.warning("list_asn_by_type retornou vazio — fallback para exports+stages+range.")
+                keys_exports    = self._discover_from_exports()
+                keys_stages     = self._discover_from_stages()
+                keys_range_scan = self._discover_from_range_scan(keys_exports | keys_stages)
+                type_keys = keys_exports | keys_stages | keys_range_scan
 
+            all_keys = type_keys | self._known_keys
+
+            # 2. Refresh INCREMENTAL: re-busca apenas novos e ainda abertos
+            with self._lock:
+                existing = dict(self._receipts)
+
+            STATUS_ABERTO = {"pendente", "em_recebimento", "recebido"}
+            need_fetch = set()
             for rk in all_keys:
+                if rk not in existing:
+                    need_fetch.add(rk)                                   # nunca buscado
+                elif existing[rk].get("status") in STATUS_ABERTO:
+                    need_fetch.add(rk)                                   # aberto — pode ter mudado
+
+            log.info(f"Total keys: {len(all_keys)} | A buscar: {len(need_fetch)} (novos + abertos)")
+
+            updated = dict(existing)  # começa com dados já em memória
+
+            for rk in need_fetch:
                 if not rk:
                     continue
                 try:
                     receipt = self._client.get_asn(rk)
                     if receipt:
-                        # Filtrar: apenas Ordens de Produção (receipttype=10)
                         if not _is_ordem_producao(receipt):
-                            log.debug(f"Receipt {rk} ignorado (type={receipt.get('type','?')} ≠ 8/OP).")
+                            log.debug(f"{rk} ignorado (type≠8/OP).")
                             continue
-
-                        # Buscar pack de cada linha via /{warehouse}/packs/{packkey}
                         for det in (receipt.get("receiptdetails") or []):
                             pk = det.get("packkey") or ""
                             if pk:
                                 self._ensure_pack(pk)
-
-                        r_dict = _receipt_to_dict(receipt, self._pack_cache)
-                        new_receipts[rk] = r_dict
+                        updated[rk] = _receipt_to_dict(receipt, self._pack_cache)
                         self._known_keys.add(rk)
                     else:
-                        log.debug(f"Receipt {rk} não encontrado.")
+                        log.debug(f"{rk} não encontrado no WMS.")
                 except Exception as e:
-                    log.warning(f"Erro ao buscar receipt {rk}: {e}")
+                    log.warning(f"Erro ao buscar {rk}: {e}")
 
             with self._lock:
-                self._receipts = new_receipts
+                self._receipts = updated
                 self._ultima_atualizacao = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
                 self._erro = None
 
             self._save_cache()
-            log.info(f"Refresh concluído: {len(new_receipts)} receipts carregados.")
+            log.info(f"Refresh concluído: {len(updated)} receipts em memória ({len(need_fetch)} atualizados).")
 
         except Exception as e:
             log.error(f"Erro no refresh: {e}")
