@@ -738,12 +738,13 @@ class ReceiptCollector:
             if anchor_sub is None:
                 return local_keys
 
-            max_sub_scan  = max(40, anchor_sub + 20)
             consec_miss   = 0
             max_known_sub = known_subs[-1] if known_subs else anchor_sub
-            for sub in range(1, max_sub_scan + 1):
+            sub = 1
+            while True:  # sub pode ter 3 dígitos (até .999)
                 rk = f"{base}.{sub}"
                 if rk in local_keys:
+                    sub += 1
                     consec_miss = 0
                     continue
                 try:
@@ -761,6 +762,7 @@ class ReceiptCollector:
                     consec_miss += 1
                     if consec_miss >= 5 and sub > max(anchor_sub, max_known_sub):
                         break
+                sub += 1
             return local_keys
 
         keys: set = set()
@@ -829,7 +831,8 @@ class ReceiptCollector:
                 pass
             local.add(f"{base}.1")
             miss = 0
-            for sub in range(2, 25):
+            sub = 2
+            while miss < 5:  # sub pode ter 3 dígitos (até .999)
                 try:
                     r2 = client.get(f"advancedshipnotice/{base}.{sub}", timeout=timeout)
                     if r2.status_code == 200:
@@ -837,12 +840,9 @@ class ReceiptCollector:
                         miss = 0
                     else:
                         miss += 1
-                        if miss >= 3:
-                            break
                 except Exception:
                     miss += 1
-                    if miss >= 3:
-                        break
+                sub += 1
             return local
 
         found = set()
@@ -933,23 +933,28 @@ class ReceiptCollector:
                     }
                     if known_bases:
                         max_base = max(known_bases)
-                        # -5: bases recentes que podem ter sido puladas na carga inicial
-                        # +1000: janela ampla — ASNs de hoje podem estar até 1000 bases além
+                        # Bases completamente novas (fora do índice)
                         scan_ini = max(1, max_base - 5)
                         scan_fim = max_base + 1001
                         bases_novas = [
                             b for b in range(scan_ini, scan_fim)
                             if b not in known_bases
                         ]
-                        if bases_novas:
+                        # Bases recentes já conhecidas: re-sonda para capturar
+                        # sub-keys criados hoje em bases já indexadas (ex: 76491.15)
+                        bases_recentes = sorted(
+                            [b for b in known_bases if b >= max_base - 800],
+                        )[-200:]  # últimas 200 bases conhecidas
+                        scan_list = bases_novas + bases_recentes
+                        if scan_list:
                             scan_result = self._scan_bases_quick(
-                                bases_novas, max_workers=15, timeout=4
+                                scan_list, max_workers=15, timeout=4
                             )
                             novel = scan_result - set(existing.keys())
                             if novel:
                                 log.info(
                                     f"Mini scan: {len(novel)} novas ASNs tipo 8 descobertas "
-                                    f"(janela {scan_ini}..{scan_fim-1})."
+                                    f"(novas={len(bases_novas)} recentes={len(bases_recentes)})."
                                 )
                                 for k in novel:
                                     type_map[k] = ""
