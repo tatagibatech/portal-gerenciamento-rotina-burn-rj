@@ -937,20 +937,22 @@ class ReceiptCollector:
                     if known_bases:
                         max_base = max(known_bases)
                         # -5: bases recentes que podem ter sido puladas na carga inicial
-                        # +500: cobre gap entre carga histórica e ASNs criadas hoje
+                        # +1000: janela ampla — ASNs de hoje podem estar até 1000 bases além
+                        scan_ini = max(1, max_base - 5)
+                        scan_fim = max_base + 1001
                         bases_novas = [
-                            b for b in range(max(1, max_base - 5), max_base + 501)
+                            b for b in range(scan_ini, scan_fim)
                             if b not in known_bases
                         ]
                         if bases_novas:
                             scan_result = self._scan_bases_quick(
-                                bases_novas, max_workers=10, timeout=3
+                                bases_novas, max_workers=15, timeout=4
                             )
                             novel = scan_result - set(existing.keys())
                             if novel:
                                 log.info(
                                     f"Mini scan: {len(novel)} novas ASNs tipo 8 descobertas "
-                                    f"(janela {max_base-5}..{max_base+20})."
+                                    f"(janela {scan_ini}..{scan_fim-1})."
                                 )
                                 for k in novel:
                                     type_map[k] = ""
