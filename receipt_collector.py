@@ -541,7 +541,9 @@ class ReceiptCollector:
         self._erro       = None
         self._thread     = None
         self._running    = False
-        self._first_scan_done = False
+        self._first_scan_done    = False
+        self._range_scan_running = False
+        self._range_scan_done    = False
         self._load_cache()
 
     # ------------------------------------------------------------------ cache
@@ -660,31 +662,19 @@ class ReceiptCollector:
         log.info(f"Descoberta: {len(keys)} chaves encontradas.")
         return keys
 
-    def _discover_from_range_scan(self, already_discovered: set | None = None) -> set:
+    def _discover_from_range_scan(self, already_discovered: set | None = None,
+                                   max_workers: int = 20) -> set:
         """
-        Varre receiptkeys sequenciais para descobrir ASNs de todos os depósitos.
-
-        Problema real observado: alguns bases não têm sub=1 — os subs começam em
-        valores maiores (ex: 76802 começa no sub=8, 76814 no sub=11). Nesses casos
-        apenas testar sub=1 pula o base inteiro.
-
-        Estratégia híbrida:
-          1. Sonda sub=1 (padrão — rápido, 1 chamada por base vazio)
-          2. Se sub=1 retorna 404, sonda os subs mínimos conhecidos desse base
-             (preenchidos via webhook ou scan anterior)
-          3. Se qualquer sonda retorna 200, faz varredura completa de subs 1-40
-             com early-exit após 5 misses CONSECUTIVOS além do sub máximo conhecido.
+        Varre receiptkeys sequenciais para descobrir ASNs.
+        Usa probing paralelo (max_workers) com timeout reduzido para ser rápido.
 
         Janela:
           • Bootstrap (primeira execução): max_base + 1500
           • Incremental (ciclos seguintes): max_base + 50
         """
-        keys = set()
-
         all_refs = self._known_keys | (already_discovered or set())
         max_base = 0
 
-        # Mapa base → conjunto de subs já conhecidos (para usar como âncoras de sonda)
         base_known_subs: dict[int, set[int]] = defaultdict(set)
         for rk in all_refs:
             parts = rk.split(".")
@@ -705,21 +695,22 @@ class ReceiptCollector:
             scan_start = max(1, max_base - 300)
             scan_end   = max_base + 1500
             self._first_scan_done = True
-            log.info(f"Range scan BOOTSTRAP: bases {scan_start}-{scan_end}")
+            log.info(f"Range scan BOOTSTRAP paralelo ({max_workers} workers): bases {scan_start}-{scan_end}")
         else:
             scan_start = max(1, max_base - 300)
             scan_end   = max_base + 50
-            log.info(f"Range scan incremental: bases {scan_start}-{scan_end}")
+            log.info(f"Range scan incremental paralelo ({max_workers} workers): bases {scan_start}-{scan_end}")
 
-        found = 0
-        for base in range(scan_end, scan_start - 1, -1):
+        bases = list(range(scan_end, scan_start - 1, -1))
+        client = self._client
+
+        def probe_and_scan_base(base):
+            local_keys = set()
             known_subs = sorted(base_known_subs.get(base, set()))
-            # Sondas: sub=1 sempre, mais o menor sub conhecido (quando ≠ 1)
             probe_subs = [1]
             if known_subs and known_subs[0] > 1:
                 probe_subs.append(known_subs[0])
             if known_subs:
-                # Tenta também um sub acima do maior conhecido (para capturar novos)
                 next_sub = known_subs[-1] + 1
                 if next_sub not in probe_subs:
                     probe_subs.append(next_sub)
@@ -728,46 +719,63 @@ class ReceiptCollector:
             for ps in probe_subs:
                 rk_ps = f"{base}.{ps}"
                 try:
-                    r = self._client.get(f"advancedshipnotice/{rk_ps}", timeout=8)
+                    r = client.get(f"advancedshipnotice/{rk_ps}", timeout=4)
                 except Exception:
                     continue
                 if r.status_code == 200:
-                    keys.add(rk_ps)
-                    found += 1
+                    # Filtra por tipo antes de varrer os subs — pula base inteiro se não é OP
+                    try:
+                        data = r.json()
+                        tipo = str(
+                            data.get("receipttype") or data.get("type") or
+                            data.get("receipttypecode") or ""
+                        ).strip()
+                        if tipo and tipo not in TIPO_ORDEM_PRODUCAO:
+                            return local_keys  # base inteiro não é tipo 8 — ignora
+                    except Exception:
+                        pass  # JSON inválido: prossegue e filtra no fetch_and_store
+                    local_keys.add(rk_ps)
                     anchor_sub = ps
                     break
 
             if anchor_sub is None:
-                continue  # base sem receipts nas sondas — pula
+                return local_keys
 
-            # Varredura completa de subs 1 até max(40, anchor+20)
-            max_sub_scan = max(40, anchor_sub + 20)
-            consec_miss  = 0
+            max_sub_scan  = max(40, anchor_sub + 20)
+            consec_miss   = 0
             max_known_sub = known_subs[-1] if known_subs else anchor_sub
             for sub in range(1, max_sub_scan + 1):
                 rk = f"{base}.{sub}"
-                if rk in keys:
+                if rk in local_keys:
                     consec_miss = 0
                     continue
                 try:
-                    r2 = self._client.get(f"advancedshipnotice/{rk}", timeout=8)
+                    r2 = client.get(f"advancedshipnotice/{rk}", timeout=4)
                     if r2.status_code == 200:
-                        keys.add(rk)
-                        found += 1
+                        local_keys.add(rk)
                         consec_miss = 0
                         if sub > max_known_sub:
                             max_known_sub = sub
                     else:
                         consec_miss += 1
-                        # Não quebra antes de passar todos os subs conhecidos + âncora
                         if consec_miss >= 5 and sub > max(anchor_sub, max_known_sub):
                             break
                 except Exception:
                     consec_miss += 1
                     if consec_miss >= 5 and sub > max(anchor_sub, max_known_sub):
                         break
+            return local_keys
 
-        log.info(f"Range scan concluído: {found} chaves descobertas.")
+        keys: set = set()
+        with ThreadPoolExecutor(max_workers=max_workers) as ex:
+            futures = {ex.submit(probe_and_scan_base, base): base for base in bases}
+            for fut in as_completed(futures):
+                try:
+                    keys.update(fut.result())
+                except Exception as e:
+                    log.debug(f"Range scan worker erro: {e}")
+
+        log.info(f"Range scan concluído: {len(keys)} chaves descobertas.")
         return keys
 
     def _discover_from_stages(self):
@@ -816,47 +824,60 @@ class ReceiptCollector:
     _STATUS_WMS_FECHADO = {"11", "15", "20"}
 
     def _refresh(self):
-        log.info("Iniciando refresh dos recebimentos PA...")
+        """
+        Fase 1 (rápida): descobre ASNs via type query ou exports+stages+cache,
+        busca detalhes das abertas e atualiza _receipts imediatamente.
+
+        Fase 2 (background, não bloqueia): inicia range scan paralelo para
+        descobrir ASNs via receiptkey sequencial (base.sub). Roda apenas uma vez
+        por instância do servidor (_range_scan_done flag).
+        """
+        log.info("Iniciando refresh dos recebimentos PA (fase 1)...")
         try:
-            # 1. Descoberta PRIMÁRIA: query por receipttype=8 → retorna {rk: status_raw}
+            # ── Descoberta ────────────────────────────────────────────────────
             type_map = self._client.list_asn_by_type(receipttype="8")
 
-            # Fallback se a query retornar vazio (endpoint não suportado)
             if not type_map:
-                log.warning("list_asn_by_type retornou vazio — fallback para exports+stages+range.")
-                keys_exports    = self._discover_from_exports()
-                keys_stages     = self._discover_from_stages()
-                keys_range_scan = self._discover_from_range_scan(keys_exports | keys_stages)
-                type_map = {k: "" for k in (keys_exports | keys_stages | keys_range_scan)}
+                # WMS não suporta listagem por receipttype (retorna 405/vazio).
+                # Usa exports + stages + cache de keys conhecidas como descoberta rápida.
+                log.warning("list_asn_by_type vazio (WMS retorna 405) — exports+stages+cache.")
+                keys_exports = self._discover_from_exports()
+                keys_stages  = self._discover_from_stages()
+                with self._lock:
+                    known_cache = set(self._known_keys)
+                all_keys = keys_exports | keys_stages | known_cache
+                type_map = {k: "" for k in all_keys}
+                log.info(
+                    f"Descoberta fase 1: {len(type_map)} chaves "
+                    f"(exp={len(keys_exports)}, stg={len(keys_stages)}, cache={len(known_cache)})."
+                )
 
-            # Registra todas as keys como conhecidas (fechados entram no cache sem re-fetch)
             self._known_keys.update(type_map.keys())
 
-            # 2. Decide quais buscar detalhes:
-            #    - abertos no WMS (status 0/2/3/4/5/9/21): sempre re-busca
-            #    - fechados no WMS (status 11/15/20): só busca se ainda não está em memória
-            #      EXCETO no startup (memória vazia): fechados são IGNORADOS na 1ª passagem
-            #      para não bloquear por horas; serão carregados nas próximas rodadas.
+            # ── Decide quais buscar ───────────────────────────────────────────
             with self._lock:
                 existing = dict(self._receipts)
 
-            startup = len(existing) == 0   # primeira rodada após deploy/restart
+            startup = len(existing) == 0
 
             need_fetch = set()
             for rk, st_raw in type_map.items():
                 if st_raw in self._STATUS_WMS_FECHADO:
                     if not startup and rk not in existing:
-                        need_fetch.add(rk)   # fechado nunca carregado (ciclos posteriores)
+                        need_fetch.add(rk)
                 else:
-                    need_fetch.add(rk)       # aberto — sempre re-busca
+                    need_fetch.add(rk)
 
-            log.info(f"Total WMS type=8: {len(type_map)} | Startup={startup} | A buscar: {len(need_fetch)}")
+            log.info(f"Descoberto: {len(type_map)} | Startup={startup} | A buscar: {len(need_fetch)}")
 
             updated = dict(existing)
 
             def _fetch_one(rk):
                 try:
                     receipt = self._client.get_asn(rk)
+                    if not receipt:
+                        # Tenta via externreceiptkey (chaves vindas de exports)
+                        receipt = self._client.get_asn_by_externkey(rk)
                     if receipt and _is_ordem_producao(receipt):
                         for det in (receipt.get("receiptdetails") or []):
                             pk = det.get("packkey") or ""
@@ -867,26 +888,63 @@ class ReceiptCollector:
                     log.warning(f"Erro ao buscar {rk}: {e}")
                 return rk, None
 
-            workers = 10
-            with ThreadPoolExecutor(max_workers=workers) as ex:
+            with ThreadPoolExecutor(max_workers=10) as ex:
                 futures = {ex.submit(_fetch_one, rk): rk for rk in need_fetch}
                 for fut in as_completed(futures):
                     rk, rec = fut.result()
                     if rec:
                         updated[rk] = rec
 
+            # ── Atualiza estado (fase 1 completa) ────────────────────────────
             with self._lock:
                 self._receipts = updated
                 self._ultima_atualizacao = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
                 self._erro = None
 
             self._save_cache()
-            log.info(f"Refresh concluído: {len(updated)} receipts em memória ({len(need_fetch)} buscados).")
+            log.info(
+                f"Fase 1 concluída: {len(updated)} receipts "
+                f"({len(need_fetch)} buscados desta vez)."
+            )
+
+            # ── Fase 2: range scan em background (apenas uma vez por instância) ──
+            if not self._range_scan_running and not self._range_scan_done:
+                self._range_scan_running = True
+                t = threading.Thread(
+                    target=self._background_range_scan,
+                    daemon=True,
+                    name="range-scan-bg",
+                )
+                t.start()
+                log.info("Range scan background iniciado.")
 
         except Exception as e:
-            log.error(f"Erro no refresh: {e}")
+            log.error(f"Erro no refresh fase 1: {e}")
             with self._lock:
                 self._erro = str(e)
+
+    def _background_range_scan(self):
+        """Executa range scan paralelo e adiciona ASNs novas ao estado incrementalmente."""
+        log.info("Background range scan: início.")
+        try:
+            with self._lock:
+                known = set(self._known_keys)
+            new_keys = self._discover_from_range_scan(already_discovered=known)
+            added = 0
+            for rk in new_keys:
+                if rk not in self._known_keys:
+                    try:
+                        rec = self.fetch_and_store(rk)
+                        if rec:
+                            added += 1
+                    except Exception as e:
+                        log.debug(f"Range scan fetch {rk}: {e}")
+            log.info(f"Background range scan: {added} novas ASNs adicionadas ao estado.")
+            self._range_scan_done = True
+        except Exception as e:
+            log.error(f"Erro no background range scan: {e}")
+        finally:
+            self._range_scan_running = False
 
     # ------------------------------------------------------------------ background thread
 
