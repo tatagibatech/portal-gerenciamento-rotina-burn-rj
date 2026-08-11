@@ -980,9 +980,13 @@ class ReceiptCollector:
                     if st_raw in self._STATUS_WMS_FECHADO:
                         continue  # fechada/cancelada — dados congelados, pula
                     data_criacao = (rec.get("data_criacao") or "")[:10]
-                    if data_criacao in (today_str, yesterday_str):
+                    data_rec_stored = (rec.get("data_recebimento") or "")[:10]
+                    # Re-busca se adddate=hoje/ontem OU se receiptdate=hoje/ontem
+                    # (captura ASNs criadas antes de ontem mas recebidas hoje)
+                    if (data_criacao in (today_str, yesterday_str)
+                            or data_rec_stored in (today_str, yesterday_str)):
                         need_fetch.add(rk)
-                    # ASN aberta mas anterior a ontem: não re-busca automaticamente
+                    # ASN aberta sem atividade recente: não re-busca automaticamente
 
             log.info(
                 f"Startup={startup} | discovered={len(type_map)} | "
@@ -1173,9 +1177,19 @@ class ReceiptCollector:
             if not resultado[dep]["supplier_name"] and rec.get("supplier_name"):
                 resultado[dep]["supplier_name"] = rec["supplier_name"]
 
-            data_atual = rec.get("data_criacao") or rec.get("data_atualizacao") or ""
+            # Usa data operacional pelo status: fechamento > recebimento > criação
+            st_raw_f  = rec.get("status_raw", "")
+            data_fec_f = (rec.get("data_fechamento") or "")[:10]
+            data_rec_f = (rec.get("data_recebimento") or "")[:10]
+            data_cri_f = (rec.get("data_criacao") or "")[:10]
+            if st_raw_f in ("11", "15") and data_fec_f:
+                data_atual = data_fec_f
+            elif data_rec_f:
+                data_atual = data_rec_f
+            else:
+                data_atual = data_cri_f
             ref_date   = data_filtro if data_filtro else hoje_str
-            is_hoje    = (data_atual[:10] == ref_date)
+            is_hoje    = (data_atual == ref_date)
 
             bucket = "hoje" if is_hoje else "backlog"
             resultado[dep][bucket][status]["count"]      += 1
@@ -1225,8 +1239,17 @@ class ReceiptCollector:
             st = rec.get("status") or "pendente"
             if status and st != status:
                 continue
-            data_atual = rec.get("data_criacao") or rec.get("data_atualizacao") or ""
-            is_hoje    = (data_atual[:10] == hoje_str)
+            st_raw_r  = rec.get("status_raw", "")
+            data_fec_r = (rec.get("data_fechamento") or "")[:10]
+            data_rec_r = (rec.get("data_recebimento") or "")[:10]
+            data_cri_r = (rec.get("data_criacao") or "")[:10]
+            if st_raw_r in ("11", "15") and data_fec_r:
+                data_atual = data_fec_r
+            elif data_rec_r:
+                data_atual = data_rec_r
+            else:
+                data_atual = data_cri_r
+            is_hoje    = (data_atual == hoje_str)
             if bucket == "hoje" and not is_hoje:
                 continue
             if bucket == "backlog" and is_hoje:
