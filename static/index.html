@@ -1060,7 +1060,7 @@ function setNav(id){
    HELPERS
 ══════════════════════════════════════════════════════════════ */
 function _fmt(n){ return Number(n||0).toLocaleString("pt-BR",{minimumFractionDigits:0,maximumFractionDigits:2}); }
-function _hoje(){ return new Date().toISOString().slice(0,10); }
+function _hoje(){ const n=new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`; }
 function _download(content, filename, type){
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([content],{type}));
