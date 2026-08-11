@@ -5,6 +5,7 @@ Estratégias de descoberta de receipts:
   2. POST inventorybalance/showinventorybalancelist por STG.PA.* -> pendentes/em andamento
   3. Cache local de keys conhecidas
 """
+import os
 import sys
 import json
 import math
@@ -524,8 +525,10 @@ def _receipt_to_dict(receipt: dict, pack_cache: dict) -> dict:
 class ReceiptCollector:
     """Thread de coleta periódica dos recebimentos PA."""
 
-    CACHE_FILE      = "receipt_keys_cache.json"
-    DATA_CACHE_FILE = "receipt_data_cache.json"   # cache completo dos dados
+    # Usa disco persistente do Render (/var/data) se disponível; senão diretório local
+    _DATA_DIR       = "/var/data" if os.path.isdir("/var/data") else "."
+    CACHE_FILE      = os.path.join(_DATA_DIR, "receipt_keys_cache.json")
+    DATA_CACHE_FILE = os.path.join(_DATA_DIR, "receipt_data_cache.json")
 
     def __init__(self, intervalo: int = 30):
         self._client     = WMSClient()
