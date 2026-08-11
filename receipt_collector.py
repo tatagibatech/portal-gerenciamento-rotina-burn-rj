@@ -825,58 +825,96 @@ class ReceiptCollector:
 
     def _refresh(self):
         """
-        Fase 1 (rápida): descobre ASNs via type query ou exports+stages+cache,
-        busca detalhes das abertas e atualiza _receipts imediatamente.
+        Dois modos de operação:
 
-        Fase 2 (background, não bloqueia): inicia range scan paralelo para
-        descobrir ASNs via receiptkey sequencial (base.sub). Roda apenas uma vez
-        por instância do servidor (_range_scan_done flag).
+        STARTUP (sem histórico em memória):
+          Tenta descobrir via list_asn_by_type + exports + stages + cache local.
+          O WMS BURN retorna 405 para todas as queries de lista, então na prática
+          só o cache local e os stages têm algum resultado. A carga real do histórico
+          é feita localmente pelo script carga_inicial_asn.py.
+
+        INCREMENTAL (histórico já carregado):
+          1. Descobre novas ASNs apenas via stages (POST inventorybalance —
+             que SIM retorna dados). Exports retornam 405, são pulados.
+          2. Re-busca apenas ASNs ABERTAS criadas hoje ou ontem para atualização
+             de status (tipo 8, ontem e hoje = "apenas busca atualização de ontem e hoje").
+          3. ASNs fechadas ou criadas antes de ontem: não são re-buscadas.
         """
-        log.info("Iniciando refresh dos recebimentos PA (fase 1)...")
+        log.info("Iniciando refresh dos recebimentos PA...")
         try:
-            # ── Descoberta ────────────────────────────────────────────────────
-            type_map = self._client.list_asn_by_type(receipttype="8")
-
-            if not type_map:
-                # WMS não suporta listagem por receipttype (retorna 405/vazio).
-                # Usa exports + stages + cache de keys conhecidas como descoberta rápida.
-                log.warning("list_asn_by_type vazio (WMS retorna 405) — exports+stages+cache.")
-                keys_exports = self._discover_from_exports()
-                keys_stages  = self._discover_from_stages()
-                with self._lock:
-                    known_cache = set(self._known_keys)
-                all_keys = keys_exports | keys_stages | known_cache
-                type_map = {k: "" for k in all_keys}
-                log.info(
-                    f"Descoberta fase 1: {len(type_map)} chaves "
-                    f"(exp={len(keys_exports)}, stg={len(keys_stages)}, cache={len(known_cache)})."
-                )
-
-            self._known_keys.update(type_map.keys())
-
-            # ── Decide quais buscar ───────────────────────────────────────────
             with self._lock:
                 existing = dict(self._receipts)
 
-            startup = len(existing) == 0
+            startup       = len(existing) == 0
+            today_str     = _hoje_str()
+            yesterday_str = (datetime.now(_BRT).date() - timedelta(days=1)).isoformat()
 
-            need_fetch = set()
-            for rk, st_raw in type_map.items():
-                if st_raw in self._STATUS_WMS_FECHADO:
-                    if not startup and rk not in existing:
-                        need_fetch.add(rk)
+            # ── Descoberta de ASNs ─────────────────────────────────────────────
+            type_map = self._client.list_asn_by_type(receipttype="8")  # 405 → {}
+
+            if not type_map:
+                if startup:
+                    # Bootstrap: usa todos os mecanismos disponíveis
+                    keys_exports = self._discover_from_exports()
+                    keys_stages  = self._discover_from_stages()
+                    with self._lock:
+                        known_cache = set(self._known_keys)
+                    all_keys = keys_exports | keys_stages | known_cache
+                    type_map = {k: "" for k in all_keys}
+                    log.info(
+                        f"Bootstrap: {len(type_map)} chaves "
+                        f"(exp={len(keys_exports)}, stg={len(keys_stages)}, cache={len(known_cache)})."
+                    )
                 else:
-                    need_fetch.add(rk)
+                    # Incremental: só stages (exports retornam 405 neste WMS)
+                    keys_stages    = self._discover_from_stages()
+                    new_via_stages = keys_stages - set(existing.keys())
+                    type_map = {k: "" for k in new_via_stages}
+                    if new_via_stages:
+                        log.info(f"Incremental: {len(new_via_stages)} novas via stages.")
 
-            log.info(f"Descoberto: {len(type_map)} | Startup={startup} | A buscar: {len(need_fetch)}")
+            self._known_keys.update(type_map.keys())
 
+            # ── Decide quais buscar ─────────────────────────────────────────────
+            need_fetch = set()
+
+            if startup:
+                # Bootstrap: busca tudo que não está fechado no cache
+                for rk, st_raw in type_map.items():
+                    if st_raw in self._STATUS_WMS_FECHADO:
+                        if rk not in existing:
+                            need_fetch.add(rk)
+                    else:
+                        need_fetch.add(rk)
+            else:
+                # Incremental:
+                # 1. Novas keys descobertas (via stages ou webhook externo)
+                for rk in type_map:
+                    if rk not in existing:
+                        need_fetch.add(rk)
+                # 2. ASNs abertas de hoje ou ontem → re-busca para atualização de status
+                for rk, rec in existing.items():
+                    st_raw = rec.get("status_raw", "")
+                    if st_raw in self._STATUS_WMS_FECHADO:
+                        continue  # fechada/cancelada — dados congelados, pula
+                    data_criacao = (rec.get("data_criacao") or "")[:10]
+                    if data_criacao in (today_str, yesterday_str):
+                        need_fetch.add(rk)
+                    # ASN aberta mas anterior a ontem: não re-busca automaticamente
+
+            log.info(
+                f"Startup={startup} | discovered={len(type_map)} | "
+                f"today={today_str} | yesterday={yesterday_str} | "
+                f"need_fetch={len(need_fetch)}"
+            )
+
+            # ── Busca em paralelo ───────────────────────────────────────────────
             updated = dict(existing)
 
             def _fetch_one(rk):
                 try:
                     receipt = self._client.get_asn(rk)
                     if not receipt:
-                        # Tenta via externreceiptkey (chaves vindas de exports)
                         receipt = self._client.get_asn_by_externkey(rk)
                     if receipt and _is_ordem_producao(receipt):
                         for det in (receipt.get("receiptdetails") or []):
@@ -895,31 +933,20 @@ class ReceiptCollector:
                     if rec:
                         updated[rk] = rec
 
-            # ── Atualiza estado (fase 1 completa) ────────────────────────────
+            # ── Atualiza estado ─────────────────────────────────────────────────
             with self._lock:
                 self._receipts = updated
                 self._ultima_atualizacao = datetime.now(_BRT).strftime("%d/%m/%Y %H:%M:%S")
                 self._erro = None
 
             self._save_cache()
-            log.info(
-                f"Fase 1 concluída: {len(updated)} receipts "
-                f"({len(need_fetch)} buscados desta vez)."
-            )
+            log.info(f"Refresh concluído: {len(updated)} receipts ({len(need_fetch)} buscados).")
 
-            # ── Fase 2: range scan em background (apenas uma vez por instância) ──
-            if not self._range_scan_running and not self._range_scan_done:
-                self._range_scan_running = True
-                t = threading.Thread(
-                    target=self._background_range_scan,
-                    daemon=True,
-                    name="range-scan-bg",
-                )
-                t.start()
-                log.info("Range scan background iniciado.")
+            # Descoberta do histórico via range scan é feita localmente pelo script
+            # carga_inicial_asn.py (muito mais rápido que no servidor Render).
 
         except Exception as e:
-            log.error(f"Erro no refresh fase 1: {e}")
+            log.error(f"Erro no refresh: {e}")
             with self._lock:
                 self._erro = str(e)
 
