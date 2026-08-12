@@ -46,7 +46,7 @@ def _self_ping():
             log.debug(f"Self-ping OK: {url}")
         except Exception as e:
             log.debug(f"Self-ping falhou (normal na inicializacao): {e}")
-        time.sleep(600)  # 10 minutos
+        time.sleep(240)  # 4 minutos — evita hibernação no Render free tier
 
 
 _ping_thread = threading.Thread(target=_self_ping, daemon=True, name="self-ping")
@@ -401,6 +401,7 @@ def api_webhook_asn():
 
 _inventario_dados = {}  # dados em memória — recarregados via POST /api/inventario/dados
 _painel_dados     = {}  # dados do painel ERP×WMS — recarregados via POST /api/inventario/painel
+_finalizacoes     = {}  # registros de finalização por nível — POST /api/inventario/finalizar
 
 
 @app.post("/api/inventario/dados")
@@ -453,7 +454,33 @@ def api_painel():
     """Retorna os dados do painel ERP×WMS."""
     if not _painel_dados:
         return jsonify({"vazio": True, "msg": "Nenhum dado do painel carregado."}), 200
-    return jsonify(_painel_dados)
+    resp = dict(_painel_dados)
+    resp["finalizacoes"] = _finalizacoes
+    return jsonify(resp)
+
+
+@app.post("/api/inventario/finalizar")
+def api_finalizar():
+    """Registra a finalização de um nível de contagem."""
+    dados = request.get_json(force=True, silent=True) or {}
+    nivel = dados.get("nivel")
+    armazem = dados.get("armazem", "todos")
+    if not nivel:
+        return jsonify({"ok": False, "msg": "nivel obrigatorio"}), 400
+    global _finalizacoes
+    _finalizacoes[str(nivel)] = {
+        "ts":      datetime.now(_BRT).isoformat(timespec="seconds"),
+        "armazem": armazem,
+        "nivel":   nivel,
+    }
+    log.info(f"Contagem C{nivel} finalizada — armazém={armazem}")
+    return jsonify({"ok": True, "nivel": nivel})
+
+
+@app.get("/api/inventario/finalizacoes")
+def api_finalizacoes():
+    """Retorna todos os registros de finalização."""
+    return jsonify(_finalizacoes)
 
 
 @app.get("/api/config-check")

@@ -344,6 +344,15 @@ main{padding:20px 24px 40px;max-width:1600px;margin:0 auto}
 .vg-farol.ativo{color:#15803d}
 .vg-farol.dim .vg-farol-dot{background:#cbd5e1}
 .vg-farol.dim{color:#94a3b8}
+.vg-nivel-row{display:flex;align-items:center;gap:8px;margin-bottom:5px}
+.vg-nivel-label{font-size:11px;font-weight:700;color:var(--blue);width:20px;flex-shrink:0}
+.vg-nivel-bar{flex:1;background:#e2e8f0;border-radius:4px;height:8px;overflow:hidden}
+.vg-nivel-fill{height:100%;border-radius:4px;transition:width .4s}
+.vg-nivel-meta{font-size:10px;color:var(--muted);white-space:nowrap;min-width:44px}
+.vg-nivel-btn{font-size:10px;padding:2px 8px;border-radius:4px;border:1px solid var(--blue);color:var(--blue);background:transparent;cursor:pointer;white-space:nowrap;flex-shrink:0}
+.vg-nivel-btn:hover{background:var(--blue);color:#fff}
+.vg-nivel-btn.done{border-color:#22C55E;color:#22C55E;cursor:default}
+.vg-nivel-btn.done:hover{background:transparent;color:#22C55E}
 
 /* ── MODAL DETALHE ── */
 .modal-overlay{
@@ -585,11 +594,10 @@ main{padding:20px 24px 40px;max-width:1600px;margin:0 auto}
 
   <!-- KPI cards inventário -->
   <div class="summary-cards" id="invKpiCards">
-    <div class="scard recebido"><div class="scard-num" id="invAcuracia">—</div><div class="scard-lbl" id="lbAcuracia">Acurácia Localização</div></div>
+    <div class="scard recebido"><div class="scard-num" id="invAcuracia">—</div><div class="scard-lbl" id="lbAcuracia">Acurácia SKU</div></div>
     <div class="scard fechado"><div class="scard-num" id="invConcluidos">—</div><div class="scard-lbl" id="lbConcluidos">Concluídos</div></div>
     <div class="scard pendente"><div class="scard-num" id="invPendentes">—</div><div class="scard-lbl" id="lbPendentes">Pendentes</div></div>
     <div class="scard no_recebimento"><div class="scard-num" id="invEmAndamento">—</div><div class="scard-lbl" id="lbEmAndamento">Em C2 / C3</div></div>
-    <div class="scard paletes"><div class="scard-num" id="invValorDiv" style="font-size:16px">—</div><div class="scard-lbl" id="lbValorDiv">Valor Divergência</div></div>
   </div>
 
   <!-- abas internas inventário -->
@@ -879,6 +887,18 @@ setInterval(() => {
   if (el) el.textContent = _countdown > 0 ? _countdown + "s" : "atualizando...";
   if (_countdown <= 0) carregarFarol();
 }, 1000);
+
+// Auto-refresh do inventário a cada 60s (apenas quando a aba estiver visível)
+let _invRefreshInterval = null;
+function _iniciarAutoRefreshInv(){
+  if (_invRefreshInterval) return;
+  _invRefreshInterval = setInterval(() => {
+    if (!document.getElementById("page-inventario").classList.contains("hidden")) {
+      carregarInventario();
+    }
+  }, 60000);
+}
+_iniciarAutoRefreshInv();
 
 async function forcarRefresh() {
   try {
@@ -1331,8 +1351,9 @@ function setNav(id){
 /* ══════════════════════════════════════════════════════════════
    INVENTÁRIO
 ══════════════════════════════════════════════════════════════ */
-let _invDados    = null;
-let _painelDados = null;
+let _invDados      = null;
+let _painelDados   = null;
+let _finalizacoes  = {};
 let _invPagAtual = 1;
 let _pkErpPag    = 1;
 let _pkWmsPag    = 1;
@@ -1352,14 +1373,17 @@ const INV_STATUS_COLORS = {
 async function carregarInventario(){
   try {
     mostrarLoading(true);
-    const [rInv, rPainel] = await Promise.all([
+    const [rInv, rPainel, rFin] = await Promise.all([
       fetch("/api/inventario"),
       fetch("/api/inventario/painel"),
+      fetch("/api/inventario/finalizacoes"),
     ]);
     const dInv    = await rInv.json();
     const dPainel = await rPainel.json();
+    const dFin    = await rFin.json().catch(() => ({}));
     _invDados    = dInv.vazio    ? null : dInv;
     _painelDados = dPainel.vazio ? null : dPainel;
+    _finalizacoes = (_painelDados && _painelDados.finalizacoes) || dFin || {};
 
     if (!_invDados && !_painelDados) {
       document.getElementById("invGeradoEm").textContent = "Nenhum dado carregado";
@@ -1400,7 +1424,6 @@ function renderInventario(){
     const concl    = itens.filter(i => ["C1_OK","C2_OK","CONCLUIDO"].includes(i.status)).length;
     const pend     = itens.filter(i => i.status === "PENDENTE").length;
     const em_c2c3  = itens.filter(i => ["AGUARDA_C2","AGUARDA_C3"].includes(i.status)).length;
-    const div_val  = itens.reduce((s,i) => s + Math.abs(i.div_val||0), 0);
 
     const acurElem = document.getElementById("invAcuracia");
     if (contados > 0) {
@@ -1414,14 +1437,12 @@ function renderInventario(){
     document.getElementById("invConcluidos").textContent = `${concl} / ${total}`;
     document.getElementById("invPendentes").textContent  = pend.toLocaleString("pt-BR");
     document.getElementById("invEmAndamento").textContent= em_c2c3.toLocaleString("pt-BR");
-    document.getElementById("invValorDiv").textContent   = "R$ " + _fmt(div_val);
   } else if (inv) {
     const kpi = inv.kpi || {};
     document.getElementById("invAcuracia").textContent   = (kpi.acuracia_pct||0).toFixed(1) + "%";
     document.getElementById("invConcluidos").textContent = `${kpi.concluidos||0} / ${kpi.total_loc_sku||0}`;
     document.getElementById("invPendentes").textContent  = kpi.pendentes||0;
     document.getElementById("invEmAndamento").textContent= kpi.em_andamento||0;
-    document.getElementById("invValorDiv").textContent   = "R$ " + _fmt(kpi.valor_total_div||0);
   }
 
   renderVisaoGeral();
@@ -1493,7 +1514,6 @@ function renderVisaoGeral(){
   itens.forEach(it => { const k = it.status; if (k in contStatus) contStatus[k]++; });
 
   const total = itens.length || 1;
-  // Legenda customizada (apenas status com count > 0)
   const legendEl = document.getElementById("vgStatusLegend");
   legendEl.innerHTML = Object.entries(INV_STATUS_LABEL)
     .filter(([k]) => contStatus[k] > 0)
@@ -1519,15 +1539,13 @@ function renderVisaoGeral(){
     options:{plugins:{legend:{display:false}}, cutout:"55%", responsive:true, maintainAspectRatio:false}
   });
 
-  // ── Progresso por armazém + farol C1/C2/C3 ──
+  // ── Progresso por armazém com linhas por nível ──
   const armBarsEl = document.getElementById("vgArmBars");
   if (!pd || !pd.prog_arm || !Object.keys(pd.prog_arm).length) {
     armBarsEl.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:20px 0">Sem dados de progresso. Execute <code>enviar_painel.py</code>.</div>';
     return;
   }
 
-  // Mapa arm→set de níveis criados com sucesso
-  // receiptkey formato: PREFIXO_INVBURN_ARMZGX_CONTAGEMN
   const asnCriados = {};
   for (const a of (pd.asns_criados || [])) {
     if (!(a.ok || a.status === "OK")) continue;
@@ -1540,15 +1558,35 @@ function renderVisaoGeral(){
   armBarsEl.innerHTML = Object.entries(pd.prog_arm)
     .sort(([a],[b]) => a.localeCompare(b))
     .map(([arm, p]) => {
-      const pct   = p.pct || 0;
-      const fill  = Math.min(pct, 100);
-      const cor   = pct >= 70 ? "#1437A0" : pct >= 40 ? "#F59E0B" : "#EF4444";
+      const pct    = p.pct || 0;
+      const fill   = Math.min(pct, 100);
+      const cor    = pct >= 70 ? "#1437A0" : pct >= 40 ? "#F59E0B" : "#EF4444";
       const niveis = asnCriados[arm] || new Set();
+      const nivelAt = _nivelAtivo(arm, asnCriados, _finalizacoes);
 
-      const farolHtml = [1,2,3].map(n => {
-        const ok = niveis.has(n);
-        return `<div class="vg-farol ${ok?"ativo":"dim"}">
-          <div class="vg-farol-dot"></div><span>C${n}</span>
+      const niveisHtml = [1, 2, 3].map(n => {
+        const asnOk = niveis.has(n);
+        const finN  = !!_finalizacoes[String(n)];
+        const isAt  = nivelAt === n;
+        let barPct = 0, barCor = "#cbd5e1", metaStr = "", btnHtml = "";
+
+        if (!asnOk) {
+          metaStr = n === 2 ? "Aguardando C1" : "Aguardando C2";
+        } else if (finN) {
+          barPct = 100; barCor = "#22C55E"; metaStr = "100%";
+          btnHtml = `<button class="vg-nivel-btn done" disabled>Finalizado ✓</button>`;
+        } else if (isAt) {
+          barPct = fill; barCor = cor; metaStr = pct.toFixed(1) + "%";
+          btnHtml = `<button class="vg-nivel-btn" onclick="finalizarContagem('${arm}',${n})">Finalizar C${n}</button>`;
+        } else {
+          metaStr = "—";
+        }
+
+        return `<div class="vg-nivel-row">
+          <span class="vg-nivel-label">C${n}</span>
+          <div class="vg-nivel-bar"><div class="vg-nivel-fill" style="width:${barPct}%;background:${barCor}"></div></div>
+          <span class="vg-nivel-meta">${metaStr}</span>
+          ${btnHtml}
         </div>`;
       }).join("");
 
@@ -1565,9 +1603,38 @@ function renderVisaoGeral(){
           &nbsp;·&nbsp; ${p.linhas||0} linhas WMS
           &nbsp;·&nbsp; ${p.skus_erp||0} SKUs ERP
         </div>
-        <div class="vg-farol-row">${farolHtml}</div>
+        ${niveisHtml}
       </div>`;
     }).join("");
+}
+
+function _nivelAtivo(arm, asnCriados, finalizacoes){
+  const niveis = asnCriados[arm] || new Set();
+  for (let n = 1; n <= 3; n++){
+    if (!niveis.has(n)) return null;
+    if (!finalizacoes[String(n)]) return n;
+  }
+  return null;
+}
+
+async function finalizarContagem(arm, nivel){
+  if (!confirm(`Finalizar Contagem C${nivel} para ${arm}?\n\nIsso registra que a contagem foi concluída. Execute atualizar_contagens.bat para processar a próxima etapa.`)) return;
+  try {
+    const r = await fetch("/api/inventario/finalizar", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({nivel, armazem: arm})
+    });
+    const d = await r.json();
+    if (d.ok){
+      toast(`Contagem C${nivel} finalizada. Execute atualizar_contagens.bat para criar C${nivel + 1}.`, "success");
+      carregarInventario();
+    } else {
+      toast("Erro: " + (d.msg || "?"), "error");
+    }
+  } catch(e){
+    toast("Erro ao finalizar: " + e.message, "error");
+  }
 }
 
 function renderArmazens(){
