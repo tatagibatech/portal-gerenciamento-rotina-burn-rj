@@ -1614,10 +1614,14 @@ function renderVisaoGeral(){
         const asnOk = niveis.has(n);
         const finN  = !!_finalizacoes[String(n)];
         const isAt  = nivelAt === n;
+
+        // C2 e C3 só aparecem quando a ASN do nível foi criada
+        if (!asnOk && n > 1) return "";
+
         let barPct = 0, barCor = "#cbd5e1", metaStr = "", btnHtml = "";
 
         if (!asnOk) {
-          metaStr = n === 2 ? "Aguardando C1" : "Aguardando C2";
+          metaStr = "Aguardando lançamento";
         } else if (finN) {
           barPct = 100; barCor = "#22C55E"; metaStr = "100%";
           btnHtml = `<button class="vg-nivel-btn done" disabled>Finalizado ✓</button>`;
