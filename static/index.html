@@ -607,7 +607,8 @@ main{padding:20px 24px 40px;max-width:1600px;margin:0 auto}
     <div class="scard recebido"><div class="scard-num" id="invAcuracia">—</div><div class="scard-lbl" id="lbAcuracia">Acurácia SKU</div></div>
     <div class="scard fechado"><div class="scard-num" id="invConcluidos">—</div><div class="scard-lbl" id="lbConcluidos">Concluídos</div></div>
     <div class="scard pendente"><div class="scard-num" id="invPendentes">—</div><div class="scard-lbl" id="lbPendentes">Pendentes</div></div>
-    <div class="scard no_recebimento"><div class="scard-num" id="invEmAndamento">—</div><div class="scard-lbl" id="lbEmAndamento">Em C2 / C3</div></div>
+    <div class="scard no_recebimento"><div class="scard-num" id="invEmC2">—</div><div class="scard-lbl">Aguarda C2</div></div>
+    <div class="scard no_recebimento"><div class="scard-num" id="invEmC3">—</div><div class="scard-lbl">Aguarda C3</div></div>
   </div>
 
   <!-- abas internas inventário -->
@@ -1469,7 +1470,8 @@ function renderInventario(){
     const c1_ok    = itensErp.filter(i => i.status === "C1_OK").length;
     const concl    = itens.filter(i => ["C1_OK","C2_OK","CONCLUIDO"].includes(i.status)).length;
     const pend     = itens.filter(i => i.status === "PENDENTE").length;
-    const em_c2c3  = itens.filter(i => ["AGUARDA_C2","AGUARDA_C3"].includes(i.status)).length;
+    const em_c2    = itens.filter(i => i.status === "AGUARDA_C2").length;
+    const em_c3    = itens.filter(i => i.status === "AGUARDA_C3").length;
 
     const acurElem = document.getElementById("invAcuracia");
     if (contados > 0) {
@@ -1482,7 +1484,8 @@ function renderInventario(){
     }
     document.getElementById("invConcluidos").textContent = `${concl} / ${total}`;
     document.getElementById("invPendentes").textContent  = pend.toLocaleString("pt-BR");
-    document.getElementById("invEmAndamento").textContent= em_c2c3.toLocaleString("pt-BR");
+    document.getElementById("invEmC2").textContent       = em_c2.toLocaleString("pt-BR");
+    document.getElementById("invEmC3").textContent       = em_c3.toLocaleString("pt-BR");
   } else if (inv) {
     const kpi = inv.kpi || {};
     document.getElementById("invAcuracia").textContent   = (kpi.acuracia_pct||0).toFixed(1) + "%";
