@@ -400,6 +400,7 @@ def api_webhook_asn():
 # ─────────────────────────────── Inventário ──────────────────────────────────
 
 _inventario_dados = {}  # dados em memória — recarregados via POST /api/inventario/dados
+_painel_dados     = {}  # dados do painel ERP×WMS — recarregados via POST /api/inventario/painel
 
 
 @app.post("/api/inventario/dados")
@@ -425,6 +426,34 @@ def api_inventario():
     if not _inventario_dados:
         return jsonify({"vazio": True, "msg": "Nenhum dado de inventário carregado."}), 200
     return jsonify(_inventario_dados)
+
+
+@app.post("/api/inventario/painel")
+def api_painel_upload():
+    """Recebe dados do painel ERP×WMS (gerar_dashboard.py) e armazena em memória."""
+    try:
+        dados = request.get_json(force=True, silent=True) or {}
+        if not dados:
+            return jsonify({"ok": False, "msg": "body vazio"}), 400
+        global _painel_dados
+        _painel_dados = dados
+        _painel_dados["recebido_em"] = datetime.now(_BRT).isoformat(timespec="seconds")
+        log.info(f"Painel recebido: {dados.get('total_skus',0)} SKUs ERP, "
+                 f"{dados.get('lidos_end',0)}/{dados.get('total_end',0)} end. lidos, "
+                 f"{dados.get('wms_linhas',0)} linhas WMS")
+        return jsonify({"ok": True, "total_skus": dados.get("total_skus", 0),
+                        "total_end": dados.get("total_end", 0)})
+    except Exception as e:
+        log.error(f"Erro em /api/inventario/painel: {e}")
+        return jsonify({"erro": str(e)}), 500
+
+
+@app.get("/api/inventario/painel")
+def api_painel():
+    """Retorna os dados do painel ERP×WMS."""
+    if not _painel_dados:
+        return jsonify({"vazio": True, "msg": "Nenhum dado do painel carregado."}), 200
+    return jsonify(_painel_dados)
 
 
 @app.get("/api/config-check")
