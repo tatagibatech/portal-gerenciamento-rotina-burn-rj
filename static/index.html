@@ -323,6 +323,16 @@ main{padding:20px 24px 40px;max-width:1600px;margin:0 auto}
 .cnt-nivel{display:inline-flex;align-items:center;padding:1px 7px;border-radius:8px;
   font-size:10px;font-weight:700;background:var(--blue);color:#fff}
 
+/* Quadros C1 / C2 / C3 */
+.cnt-quadro{background:#fff;border:1px solid var(--border);border-radius:8px;margin-bottom:16px;overflow:hidden}
+.cnt-quadro-hdr{display:flex;align-items:center;justify-content:space-between;
+  padding:10px 16px;font-size:13px;font-weight:700;color:#fff}
+.cnt-quadro-hdr.c1{background:var(--blue)}
+.cnt-quadro-hdr.c2{background:#F59E0B}
+.cnt-quadro-hdr.c3{background:#EF4444}
+.cnt-quadro-tot{font-size:11px;font-weight:400;opacity:.85}
+.cnt-quadro .backlog-table{border-radius:0}
+
 /* ── VISÃO GERAL: grid 2 colunas ── */
 .vg-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:10px}
 .vg-card{background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:18px}
@@ -684,28 +694,61 @@ main{padding:20px 24px 40px;max-width:1600px;margin:0 auto}
       <div id="pkErpPag" class="pag-btns" style="margin-top:10px;justify-content:center"></div>
     </div>
 
-    <!-- Contagens WMS -->
+    <!-- Contagens WMS — quadros C1 / C2 / C3 -->
     <div id="inv-subtab-wms" class="inv-subtab-content">
-      <div class="panel-actions" style="margin-bottom:10px;flex-wrap:wrap;gap:8px">
-        <input type="text" id="pkFiltroArm" placeholder="Armazém..." class="inv-filtro" style="width:110px" oninput="renderContagensWms()">
-        <input type="text" id="pkFiltroLoc" placeholder="Endereço..." class="inv-filtro" style="width:140px" oninput="renderContagensWms()">
-        <input type="text" id="pkFiltroSkuWms" placeholder="SKU..." class="inv-filtro" style="width:100px" oninput="renderContagensWms()">
-        <select id="pkFiltroNivel" class="inv-filtro" onchange="renderContagensWms()">
-          <option value="">Todos os níveis</option>
-          <option value="1">C1</option><option value="2">C2</option><option value="3">C3</option>
-        </select>
-        <span id="pkWmsTotal" style="font-size:11px;color:var(--muted);margin-left:auto"></span>
+
+      <!-- Filtros globais -->
+      <div class="panel-actions" style="margin-bottom:14px;flex-wrap:wrap;gap:8px">
+        <input type="text" id="pkFiltroArm"    placeholder="Armazém..." class="inv-filtro" style="width:110px" oninput="renderContagensWms()">
+        <input type="text" id="pkFiltroLoc"    placeholder="Endereço..." class="inv-filtro" style="width:140px" oninput="renderContagensWms()">
+        <input type="text" id="pkFiltroSkuWms" placeholder="SKU..."      class="inv-filtro" style="width:100px" oninput="renderContagensWms()">
       </div>
-      <div style="overflow-x:auto">
-        <table class="backlog-table">
-          <thead><tr>
-            <th>Armazém</th><th>Endereço</th><th>Zona</th><th>Tipo</th>
-            <th>SKU</th><th>Nível</th><th>Qtd Contada</th>
-          </tr></thead>
-          <tbody id="tblContagensWmsBody"></tbody>
-        </table>
+
+      <!-- Quadro C1 -->
+      <div class="cnt-quadro">
+        <div class="cnt-quadro-hdr c1">
+          <span>Contagem C1</span>
+          <span id="pkWmsTotal1" class="cnt-quadro-tot"></span>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="backlog-table">
+            <thead><tr><th>Armazém</th><th>Endereço</th><th>Zona</th><th>Tipo</th><th>SKU</th><th>Qtd Contada</th></tr></thead>
+            <tbody id="tblWmsC1"></tbody>
+          </table>
+        </div>
+        <div id="pkWmsPag1" class="pag-btns" style="margin-top:8px;justify-content:center"></div>
       </div>
-      <div id="pkWmsPag" class="pag-btns" style="margin-top:10px;justify-content:center"></div>
+
+      <!-- Quadro C2 -->
+      <div class="cnt-quadro">
+        <div class="cnt-quadro-hdr c2">
+          <span>Contagem C2</span>
+          <span id="pkWmsTotal2" class="cnt-quadro-tot"></span>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="backlog-table">
+            <thead><tr><th>Armazém</th><th>Endereço</th><th>Zona</th><th>Tipo</th><th>SKU</th><th>Qtd Contada</th></tr></thead>
+            <tbody id="tblWmsC2"></tbody>
+          </table>
+        </div>
+        <div id="pkWmsPag2" class="pag-btns" style="margin-top:8px;justify-content:center"></div>
+      </div>
+
+      <!-- Quadro C3 -->
+      <div class="cnt-quadro">
+        <div class="cnt-quadro-hdr c3">
+          <span>Contagem C3</span>
+          <span id="pkWmsTotal3" class="cnt-quadro-tot"></span>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="backlog-table">
+            <thead><tr><th>Armazém</th><th>Endereço</th><th>Zona</th><th>Tipo</th><th>SKU</th><th>Qtd Contada</th></tr></thead>
+            <tbody id="tblWmsC3"></tbody>
+          </table>
+        </div>
+        <div id="pkWmsPag3" class="pag-btns" style="margin-top:8px;justify-content:center"></div>
+      </div>
+
     </div>
 
   </div><!-- /inv-tab-contagens -->
@@ -1356,7 +1399,7 @@ let _painelDados   = null;
 let _finalizacoes  = {};
 let _invPagAtual = 1;
 let _pkErpPag    = 1;
-let _pkWmsPag    = 1;
+// _pkWmsPag substituído por _pkWmsPags {1,2,3} abaixo
 const INV_PG = 50;
 const PK_PG  = 50;
 let _chartStatus = null, _chartPareto = null;
@@ -1713,7 +1756,7 @@ function renderContagensPainel(){
 
   // Reset paginação ao recarregar
   _pkErpPag = 1;
-  _pkWmsPag = 1;
+  _pkWmsPags[1] = _pkWmsPags[2] = _pkWmsPags[3] = 1;
   renderBaseErp();
   renderContagensWms();
 }
@@ -1770,56 +1813,56 @@ function renderBaseErp(){
 
 function _pkErpMudaPag(p){ if(p<1) return; _pkErpPag=p; renderBaseErp(); }
 
+const _pkWmsPags = {1:1, 2:1, 3:1};
+
 function renderContagensWms(){
   const pd = _painelDados;
   if (!pd) return;
-  const fArm  = (document.getElementById("pkFiltroArm")||{}).value?.toLowerCase()||"";
-  const fLoc  = (document.getElementById("pkFiltroLoc")||{}).value?.toLowerCase()||"";
-  const fSku  = (document.getElementById("pkFiltroSkuWms")||{}).value?.toLowerCase()||"";
-  const fNiv  = (document.getElementById("pkFiltroNivel")||{}).value||"";
+  const fArm = (document.getElementById("pkFiltroArm")||{}).value?.toLowerCase()||"";
+  const fLoc = (document.getElementById("pkFiltroLoc")||{}).value?.toLowerCase()||"";
+  const fSku = (document.getElementById("pkFiltroSkuWms")||{}).value?.toLowerCase()||"";
 
-  const filtered = (pd.linhas_wms||[]).filter(l =>
+  const todas = (pd.linhas_wms||[]).filter(l =>
     (!fArm || String(l.arm||l.armazem||"").toLowerCase().includes(fArm)) &&
     (!fLoc || String(l.loc||"").toLowerCase().includes(fLoc)) &&
-    (!fSku || String(l.sku||"").toLowerCase().includes(fSku)) &&
-    (!fNiv || String(l.nivel||"") === fNiv)
+    (!fSku || String(l.sku||"").toLowerCase().includes(fSku))
   );
 
-  if (!filtered.length) {
-    document.getElementById("tblContagensWmsBody").innerHTML =
-      '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:30px">📦 Nenhuma leitura registrada ainda. Aguardando coletor.</td></tr>';
-    const elTotal = document.getElementById("pkWmsTotal"); if (elTotal) elTotal.textContent = "0 linha(s)";
-    document.getElementById("pkWmsPag").innerHTML = "";
-    return;
-  }
+  const rowHtml = l => `<tr>
+    <td>${l.arm||l.armazem||"—"}</td>
+    <td style="font-family:monospace;font-size:11px">${l.loc||"—"}</td>
+    <td>${l.zona||"—"}</td>
+    <td>${l.tipo||"—"}</td>
+    <td><strong>${l.sku||"—"}</strong></td>
+    <td class="td-qty"><strong>${_fmt(l.qty)}</strong></td>
+  </tr>`;
 
-  const total = Math.ceil(filtered.length / PK_PG) || 1;
-  if (_pkWmsPag > total) _pkWmsPag = 1;
-  const page = filtered.slice((_pkWmsPag-1)*PK_PG, _pkWmsPag*PK_PG);
+  const vazio = n => `<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px">📦 Nenhuma leitura C${n} registrada.</td></tr>`;
 
-  const tbody = document.getElementById("tblContagensWmsBody");
-  tbody.innerHTML = page.map(l =>
-    `<tr>
-      <td>${l.arm||l.armazem||"—"}</td>
-      <td style="font-family:monospace;font-size:11px">${l.loc||"—"}</td>
-      <td>${l.zona||"—"}</td>
-      <td>${l.tipo||"—"}</td>
-      <td><strong>${l.sku||"—"}</strong></td>
-      <td><span class="cnt-nivel">C${l.nivel||1}</span></td>
-      <td class="td-qty"><strong>${_fmt(l.qty)}</strong></td>
-    </tr>`
-  ).join("");
+  [1, 2, 3].forEach(n => {
+    const linhas = todas.filter(l => (l.nivel||1) === n);
+    const tot    = Math.ceil(linhas.length / PK_PG) || 1;
+    if (_pkWmsPags[n] > tot) _pkWmsPags[n] = 1;
+    const page   = linhas.slice((_pkWmsPags[n]-1)*PK_PG, _pkWmsPags[n]*PK_PG);
 
-  const elTotal = document.getElementById("pkWmsTotal"); if (elTotal) elTotal.textContent = `${filtered.length} linha(s)`;
+    document.getElementById(`tblWmsC${n}`).innerHTML = linhas.length
+      ? page.map(rowHtml).join("")
+      : vazio(n);
 
-  const pag = document.getElementById("pkWmsPag");
-  pag.innerHTML = `<span style="font-size:11px;color:var(--muted)">${filtered.length} linhas</span>
-    <button class="pag-btn${_pkWmsPag===1?' disabled':''}" onclick="_pkWmsMudaPag(${_pkWmsPag-1})">‹ Ant</button>
-    <button class="pag-btn active">${_pkWmsPag}/${total}</button>
-    <button class="pag-btn${_pkWmsPag>=total?' disabled':''}" onclick="_pkWmsMudaPag(${_pkWmsPag+1})">Prox ›</button>`;
+    const elTot = document.getElementById(`pkWmsTotal${n}`);
+    if (elTot) elTot.textContent = `${linhas.length} linha(s)`;
+
+    const pag = document.getElementById(`pkWmsPag${n}`);
+    if (!pag) return;
+    if (!linhas.length) { pag.innerHTML = ""; return; }
+    pag.innerHTML = `<span style="font-size:11px;color:var(--muted)">${linhas.length} linhas</span>
+      <button class="pag-btn${_pkWmsPags[n]===1?' disabled':''}" onclick="_pkWmsMudaPag(${n},${_pkWmsPags[n]-1})">‹ Ant</button>
+      <button class="pag-btn active">${_pkWmsPags[n]}/${tot}</button>
+      <button class="pag-btn${_pkWmsPags[n]>=tot?' disabled':''}" onclick="_pkWmsMudaPag(${n},${_pkWmsPags[n]+1})">Prox ›</button>`;
+  });
 }
 
-function _pkWmsMudaPag(p){ if(p<1) return; _pkWmsPag=p; renderContagensWms(); }
+function _pkWmsMudaPag(n, p){ if(p<1) return; _pkWmsPags[n]=p; renderContagensWms(); }
 
 function setInvSubtab(id){
   document.querySelectorAll(".inv-subtab").forEach(el => el.classList.remove("active"));
