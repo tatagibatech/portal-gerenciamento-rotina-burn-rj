@@ -33,12 +33,18 @@ def _norm_date(val) -> str:
     s = str(val).strip()
     if not s or s == "None":
         return ""
+    # ISO: "2026-08-10..."
     if len(s) >= 10 and s[4:5] == "-":
         return s[:10]
-    if len(s) >= 10 and s[2:3] == "/":
-        parts = s[:10].split("/")
+    # Qualquer formato com "/" (MM/DD/YYYY, M/D/YY, etc.)
+    if "/" in s:
+        date_part = s.split()[0]  # ignora a parte de hora
+        parts = date_part.split("/")
         if len(parts) == 3:
-            return f"{parts[2]}-{parts[0].zfill(2)}-{parts[1].zfill(2)}"
+            yr = parts[2]
+            if len(yr) <= 2:
+                yr = "20" + yr.zfill(2)
+            return f"{yr}-{parts[0].zfill(2)}-{parts[1].zfill(2)}"
     return s[:10]
 
 
@@ -58,8 +64,12 @@ def _status_derivado(sr: str) -> str:
     return STATUS_MAP.get(sr, "pendente")
 
 
+import shutil, tempfile
+
 print("Lendo Excel...")
-wb = openpyxl.load_workbook(EXCEL, read_only=True, data_only=True)
+_tmp = tempfile.mktemp(suffix=".xlsx")
+shutil.copy2(EXCEL, _tmp)
+wb = openpyxl.load_workbook(_tmp, read_only=True, data_only=True)
 ws = wb["Data"] if "Data" in wb.sheetnames else wb.active
 pat = re.compile(r"^\d+\.\d+$")
 receipts = []

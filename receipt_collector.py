@@ -1117,12 +1117,19 @@ class ReceiptCollector:
         threading.Thread(target=self._refresh, daemon=True).start()
 
     def bulk_import(self, receipts: list) -> int:
-        """Importa receipts pré-parseados diretamente no cache, sem chamar o WMS."""
+        """Importa receipts pré-parseados diretamente no cache, sem chamar o WMS.
+        Preserva entradas que já vieram do WMS (n_linhas > 0 ou paletes != 0)."""
         imported = 0
         with self._lock:
             for r in receipts:
                 rk = r.get("receiptkey")
                 if not rk:
+                    continue
+                existing = self._receipts.get(rk)
+                if existing and existing.get("n_linhas", 0) > 0:
+                    # já tem dados completos do WMS — só registra a key
+                    self._known_keys.add(rk)
+                    imported += 1
                     continue
                 self._receipts[rk] = r
                 self._known_keys.add(rk)
