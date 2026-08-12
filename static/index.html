@@ -323,6 +323,28 @@ main{padding:20px 24px 40px;max-width:1600px;margin:0 auto}
 .cnt-nivel{display:inline-flex;align-items:center;padding:1px 7px;border-radius:8px;
   font-size:10px;font-weight:700;background:var(--blue);color:#fff}
 
+/* ── VISÃO GERAL: grid 2 colunas ── */
+.vg-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:10px}
+.vg-card{background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:18px}
+.vg-card-title{font-size:13px;font-weight:700;color:var(--blue-dark);margin-bottom:14px}
+.vg-donut-wrap{display:flex;align-items:center;gap:20px}
+.vg-legend{flex:1;min-width:0}
+.vg-legend-item{display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:10px}
+.vg-legend-dot{width:14px;height:14px;border-radius:3px;flex-shrink:0}
+.vg-donut-box{width:160px;height:160px;flex-shrink:0;position:relative}
+.vg-arm-row{margin-bottom:20px}
+.vg-arm-header{display:flex;justify-content:space-between;align-items:center;font-size:12px;font-weight:600;margin-bottom:5px}
+.vg-arm-bar{background:#e2e8f0;border-radius:6px;height:16px;overflow:hidden;margin-bottom:5px}
+.vg-arm-fill{height:100%;border-radius:6px;transition:width .4s}
+.vg-arm-meta{font-size:11px;color:var(--muted);margin-bottom:7px}
+.vg-farol-row{display:flex;gap:12px}
+.vg-farol{display:flex;align-items:center;gap:4px;font-size:11px;font-weight:600}
+.vg-farol-dot{width:10px;height:10px;border-radius:50%}
+.vg-farol.ativo .vg-farol-dot{background:#22C55E}
+.vg-farol.ativo{color:#15803d}
+.vg-farol.dim .vg-farol-dot{background:#cbd5e1}
+.vg-farol.dim{color:#94a3b8}
+
 /* ── MODAL DETALHE ── */
 .modal-overlay{
   position:fixed;inset:0;background:rgba(13,37,128,.55);backdrop-filter:blur(3px);
@@ -563,11 +585,11 @@ main{padding:20px 24px 40px;max-width:1600px;margin:0 auto}
 
   <!-- KPI cards inventário -->
   <div class="summary-cards" id="invKpiCards">
-    <div class="scard recebido"><div class="scard-num" id="invAcuracia">—</div><div class="scard-lbl" id="lbAcuracia">% End. Lidos</div></div>
-    <div class="scard fechado"><div class="scard-num" id="invConcluidos">—</div><div class="scard-lbl" id="lbConcluidos">Lidos / Total</div></div>
-    <div class="scard pendente"><div class="scard-num" id="invPendentes">—</div><div class="scard-lbl" id="lbPendentes">End. Pendentes</div></div>
-    <div class="scard no_recebimento"><div class="scard-num" id="invEmAndamento">—</div><div class="scard-lbl" id="lbEmAndamento">Linhas WMS</div></div>
-    <div class="scard paletes"><div class="scard-num" id="invValorDiv" style="font-size:16px">—</div><div class="scard-lbl" id="lbValorDiv">Valor Total ERP</div></div>
+    <div class="scard recebido"><div class="scard-num" id="invAcuracia">—</div><div class="scard-lbl" id="lbAcuracia">Acurácia Localização</div></div>
+    <div class="scard fechado"><div class="scard-num" id="invConcluidos">—</div><div class="scard-lbl" id="lbConcluidos">Concluídos</div></div>
+    <div class="scard pendente"><div class="scard-num" id="invPendentes">—</div><div class="scard-lbl" id="lbPendentes">Pendentes</div></div>
+    <div class="scard no_recebimento"><div class="scard-num" id="invEmAndamento">—</div><div class="scard-lbl" id="lbEmAndamento">Em C2 / C3</div></div>
+    <div class="scard paletes"><div class="scard-num" id="invValorDiv" style="font-size:16px">—</div><div class="scard-lbl" id="lbValorDiv">Valor Divergência</div></div>
   </div>
 
   <!-- abas internas inventário -->
@@ -580,31 +602,19 @@ main{padding:20px 24px 40px;max-width:1600px;margin:0 auto}
 
   <!-- ── ABA: VISÃO GERAL ── -->
   <div id="inv-tab-resumo" class="inv-tab-content">
-    <!-- Status das ASNs de contagem -->
-    <div class="section-title">Status das Contagens</div>
-    <div class="inv-asn-grid" id="invVgAsnCards">
-      <div style="color:var(--muted);font-size:12px">Aguardando dados...</div>
-    </div>
-    <!-- Progresso por armazém -->
-    <div id="invVgBars" style="margin-bottom:20px"></div>
-
-    <div class="inv-charts-grid">
-      <div class="inv-chart-card">
-        <div class="inv-chart-title">Distribuição por Status (Base ERP)</div>
-        <canvas id="chartStatus" height="220"></canvas>
+    <div class="vg-grid">
+      <div class="vg-card">
+        <div class="vg-card-title">Distribuição por Status</div>
+        <div class="vg-donut-wrap">
+          <div id="vgStatusLegend" class="vg-legend"></div>
+          <div class="vg-donut-box"><canvas id="chartStatus"></canvas></div>
+        </div>
       </div>
-      <div class="inv-chart-card">
-        <div class="inv-chart-title">Progresso por Armazém (Endereços)</div>
-        <canvas id="chartArmazem" height="220"></canvas>
+      <div class="vg-card">
+        <div class="vg-card-title">Progresso por Armazém</div>
+        <div id="vgArmBars"></div>
       </div>
     </div>
-    <div class="section-title" style="margin-top:20px">Progresso de Contagem</div>
-    <table class="backlog-table" id="invConvergenciaTable">
-      <thead><tr>
-        <th>Armazém</th><th>Total End.</th><th>Lidos</th><th>Pendentes</th><th>Linhas WMS</th><th>SKUs ERP</th><th>% Lido</th>
-      </tr></thead>
-      <tbody id="invConvergenciaBody"></tbody>
-    </table>
   </div>
 
   <!-- ── ABA: ARMAZÉNS ── -->
@@ -1328,7 +1338,7 @@ let _pkErpPag    = 1;
 let _pkWmsPag    = 1;
 const INV_PG = 50;
 const PK_PG  = 50;
-let _chartStatus = null, _chartArmazem = null, _chartPareto = null;
+let _chartStatus = null, _chartPareto = null;
 
 const INV_STATUS_LABEL = {
   PENDENTE:"Pendente", C1_OK:"C1 OK", AGUARDA_C2:"Aguarda C2",
@@ -1365,8 +1375,9 @@ async function carregarInventario(){
 }
 
 function renderSemDados(){
-  document.getElementById("invVgAsnCards").innerHTML =
+  document.getElementById("vgArmBars").innerHTML =
     '<div style="color:var(--muted);font-size:12px">Nenhum dado carregado. Execute <code>rodar_tudo.bat</code> e <code>enviar_painel.py</code>.</div>';
+  document.getElementById("vgStatusLegend").innerHTML = "";
   document.getElementById("invCntAsnCards").innerHTML =
     '<div style="color:var(--muted);font-size:12px">Nenhum dado do painel. Execute <code>enviar_painel.py</code>.</div>';
 }
@@ -1382,15 +1393,32 @@ function renderInventario(){
 
   // KPI cards — usa painelDados como fonte primária
   if (pd) {
-    document.getElementById("invAcuracia").textContent   = pd.pct_end.toFixed(1) + "%";
-    document.getElementById("invConcluidos").textContent = `${pd.lidos_end} / ${pd.total_end}`;
-    document.getElementById("invPendentes").textContent  = (pd.total_end - pd.lidos_end).toLocaleString("pt-BR");
-    document.getElementById("invEmAndamento").textContent= pd.wms_linhas;
-    document.getElementById("invValorDiv").textContent   = "R$ " + _fmt(pd.total_erp_val||0);
+    const itens    = pd.itens || [];
+    const total    = itens.length;
+    const contados = itens.filter(i => i.c1 !== null && i.c1 !== undefined).length;
+    const c1_ok    = itens.filter(i => i.status === "C1_OK").length;
+    const concl    = itens.filter(i => ["C1_OK","C2_OK","CONCLUIDO"].includes(i.status)).length;
+    const pend     = itens.filter(i => i.status === "PENDENTE").length;
+    const em_c2c3  = itens.filter(i => ["AGUARDA_C2","AGUARDA_C3"].includes(i.status)).length;
+    const div_val  = itens.reduce((s,i) => s + Math.abs(i.div_val||0), 0);
+
+    const acurElem = document.getElementById("invAcuracia");
+    if (contados > 0) {
+      const pct = (c1_ok / contados * 100).toFixed(1);
+      acurElem.textContent = pct + "%";
+      acurElem.style.color = pct >= 95 ? "#22C55E" : pct >= 80 ? "#F59E0B" : "#EF4444";
+    } else {
+      acurElem.textContent = "—";
+      acurElem.style.color = "";
+    }
+    document.getElementById("invConcluidos").textContent = `${concl} / ${total}`;
+    document.getElementById("invPendentes").textContent  = pend.toLocaleString("pt-BR");
+    document.getElementById("invEmAndamento").textContent= em_c2c3.toLocaleString("pt-BR");
+    document.getElementById("invValorDiv").textContent   = "R$ " + _fmt(div_val);
   } else if (inv) {
     const kpi = inv.kpi || {};
     document.getElementById("invAcuracia").textContent   = (kpi.acuracia_pct||0).toFixed(1) + "%";
-    document.getElementById("invConcluidos").textContent = `${kpi.concluidos||0}/${kpi.total_loc_sku||0}`;
+    document.getElementById("invConcluidos").textContent = `${kpi.concluidos||0} / ${kpi.total_loc_sku||0}`;
     document.getElementById("invPendentes").textContent  = kpi.pendentes||0;
     document.getElementById("invEmAndamento").textContent= kpi.em_andamento||0;
     document.getElementById("invValorDiv").textContent   = "R$ " + _fmt(kpi.valor_total_div||0);
@@ -1455,94 +1483,91 @@ function _renderArmBars(containerId, progArm){
 }
 
 function renderVisaoGeral(){
-  const pd  = _painelDados;
-  const inv = _invDados;
+  const pd   = _painelDados;
+  const inv  = _invDados;
+  const itens = pd ? (pd.itens || []) : (inv ? (inv.linhas||[]) : []);
 
-  // ASN cards e barras — usa painelDados
-  if (pd) {
-    _renderAsnCards("invVgAsnCards", pd.asns_criados || []);
-    _renderArmBars("invVgBars", pd.prog_arm || {});
-  } else {
-    document.getElementById("invVgAsnCards").innerHTML =
-      '<div style="color:var(--muted);font-size:12px">Nenhum dado do painel disponível. Execute <code>enviar_painel.py</code>.</div>';
-    document.getElementById("invVgBars").innerHTML = "";
-  }
-
-  // Gráfico distribuição por status — usa itens do painel quando disponível
-  const itens = pd ? (pd.itens || []) : [];
+  // ── Donut: distribuição por status ──
   const contStatus = {};
   for (const s of Object.keys(INV_STATUS_LABEL)) contStatus[s] = 0;
-  itens.forEach(it => { if (it.status in contStatus) contStatus[it.status]++; });
+  itens.forEach(it => { const k = it.status; if (k in contStatus) contStatus[k]++; });
 
-  // Se não tem painel, tenta invDados
-  if (!pd && inv) {
-    (inv.linhas||[]).forEach(l => { if (l.status in contStatus) contStatus[l.status]++; });
-  }
-
-  const statusLabels = Object.keys(INV_STATUS_LABEL).map(k => INV_STATUS_LABEL[k]);
-  const statusVals   = Object.keys(INV_STATUS_LABEL).map(k => contStatus[k]);
-  const statusColors = Object.keys(INV_STATUS_LABEL).map(k => INV_STATUS_COLORS[k]);
+  const total = itens.length || 1;
+  // Legenda customizada (apenas status com count > 0)
+  const legendEl = document.getElementById("vgStatusLegend");
+  legendEl.innerHTML = Object.entries(INV_STATUS_LABEL)
+    .filter(([k]) => contStatus[k] > 0)
+    .map(([k, lbl]) => {
+      const pct = Math.round(contStatus[k] / total * 100);
+      return `<div class="vg-legend-item">
+        <div class="vg-legend-dot" style="background:${INV_STATUS_COLORS[k]}"></div>
+        <span><strong>${lbl}</strong> — ${pct}%</span>
+      </div>`;
+    }).join("") || '<div style="color:var(--muted);font-size:12px">Sem dados</div>';
 
   if (_chartStatus) _chartStatus.destroy();
   _chartStatus = new Chart(document.getElementById("chartStatus"), {
     type:"doughnut",
-    data:{labels: statusLabels, datasets:[{data:statusVals, backgroundColor:statusColors, borderWidth:2}]},
-    options:{plugins:{legend:{position:"right",labels:{font:{size:11}}}}, cutout:"55%"}
+    data:{
+      labels: Object.keys(INV_STATUS_LABEL).map(k => INV_STATUS_LABEL[k]),
+      datasets:[{
+        data:            Object.keys(INV_STATUS_LABEL).map(k => contStatus[k]),
+        backgroundColor: Object.keys(INV_STATUS_LABEL).map(k => INV_STATUS_COLORS[k]),
+        borderWidth:2
+      }]
+    },
+    options:{plugins:{legend:{display:false}}, cutout:"55%", responsive:true, maintainAspectRatio:false}
   });
 
-  // Gráfico de barras por armazém — usa prog_arm do painel
-  let armLabels = [], lidos = [], total = [], pendAr = [];
-  if (pd && pd.prog_arm) {
-    armLabels = Object.keys(pd.prog_arm).sort();
-    lidos  = armLabels.map(a => pd.prog_arm[a].lidos_end || 0);
-    total  = armLabels.map(a => pd.prog_arm[a].pend_end  || 0);
-  } else if (inv) {
-    const kpiArm = inv.kpi_por_armazem || {};
-    armLabels = Object.keys(kpiArm).sort();
-    lidos  = armLabels.map(a => (kpiArm[a].c1_ok||0)+(kpiArm[a].c2_ok||0)+(kpiArm[a].concluido||0));
-    total  = armLabels.map(a => kpiArm[a].pendente||0);
+  // ── Progresso por armazém + farol C1/C2/C3 ──
+  const armBarsEl = document.getElementById("vgArmBars");
+  if (!pd || !pd.prog_arm || !Object.keys(pd.prog_arm).length) {
+    armBarsEl.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:20px 0">Sem dados de progresso. Execute <code>enviar_painel.py</code>.</div>';
+    return;
   }
 
-  if (_chartArmazem) _chartArmazem.destroy();
-  _chartArmazem = new Chart(document.getElementById("chartArmazem"), {
-    type:"bar",
-    data:{labels: armLabels, datasets:[
-      {label:"Lidos",    data:lidos,  backgroundColor:"#22C55E"},
-      {label:"Pendentes",data:total,  backgroundColor:"#F59E0B"},
-    ]},
-    options:{plugins:{legend:{position:"top",labels:{font:{size:10}}}},
-      scales:{x:{stacked:true},y:{stacked:true,ticks:{font:{size:10}}}},
-      responsive:true, maintainAspectRatio:false}
-  });
-
-  // Tabela de progresso
-  const tbody = document.getElementById("invConvergenciaBody");
-  if (pd && pd.prog_arm) {
-    tbody.innerHTML = Object.entries(pd.prog_arm).sort(([a],[b])=>a.localeCompare(b)).map(([arm,p]) =>
-      `<tr>
-        <td class="bl-dep">${arm}</td>
-        <td>${(p.total_end||0).toLocaleString("pt-BR")}</td>
-        <td>${(p.lidos_end||0).toLocaleString("pt-BR")}</td>
-        <td>${(p.pend_end||0).toLocaleString("pt-BR")}</td>
-        <td>${p.linhas||0}</td>
-        <td>${p.skus_erp||0}</td>
-        <td><strong>${(p.pct||0).toFixed(1)}%</strong></td>
-      </tr>`
-    ).join("") || '<tr><td colspan="7" style="text-align:center;color:var(--muted)">Sem dados</td></tr>';
-  } else if (inv) {
-    const kpiArm = inv.kpi_por_armazem || {};
-    tbody.innerHTML = Object.keys(kpiArm).sort().map(a => {
-      const k = kpiArm[a]; const tot = k.total||0;
-      const concl = (k.c1_ok||0)+(k.c2_ok||0)+(k.concluido||0);
-      return `<tr>
-        <td class="bl-dep">${a}</td><td>${tot}</td><td>${k.c1_ok||0}</td>
-        <td>${k.c2_ok||0}</td><td>${k.concluido||0}</td><td>${k.pendente||0}</td>
-        <td><strong>${tot>0?Math.round(concl/tot*100):0}%</strong></td>
-      </tr>`;
-    }).join("") || '<tr><td colspan="7" style="text-align:center;color:var(--muted)">Sem dados</td></tr>';
-  } else {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted)">Sem dados</td></tr>';
+  // Mapa arm→set de níveis criados com sucesso
+  // receiptkey formato: PREFIXO_INVBURN_ARMZGX_CONTAGEMN
+  const asnCriados = {};
+  for (const a of (pd.asns_criados || [])) {
+    if (!(a.ok || a.status === "OK")) continue;
+    const arm = a.armazem || (a.receiptkey || "").split("_")[2] || "";
+    if (!arm) continue;
+    if (!asnCriados[arm]) asnCriados[arm] = new Set();
+    asnCriados[arm].add(a.nivel);
   }
+
+  armBarsEl.innerHTML = Object.entries(pd.prog_arm)
+    .sort(([a],[b]) => a.localeCompare(b))
+    .map(([arm, p]) => {
+      const pct   = p.pct || 0;
+      const fill  = Math.min(pct, 100);
+      const cor   = pct >= 70 ? "#1437A0" : pct >= 40 ? "#F59E0B" : "#EF4444";
+      const niveis = asnCriados[arm] || new Set();
+
+      const farolHtml = [1,2,3].map(n => {
+        const ok = niveis.has(n);
+        return `<div class="vg-farol ${ok?"ativo":"dim"}">
+          <div class="vg-farol-dot"></div><span>C${n}</span>
+        </div>`;
+      }).join("");
+
+      return `<div class="vg-arm-row">
+        <div class="vg-arm-header">
+          <span><strong>${arm}</strong></span>
+          <span style="color:${cor};font-weight:800">${pct.toFixed(1)}%</span>
+        </div>
+        <div class="vg-arm-bar">
+          <div class="vg-arm-fill" style="width:${fill}%;background:${cor}"></div>
+        </div>
+        <div class="vg-arm-meta">
+          ${(p.lidos_end||0).toLocaleString("pt-BR")} / ${(p.total_end||0).toLocaleString("pt-BR")} end. lidos
+          &nbsp;·&nbsp; ${p.linhas||0} linhas WMS
+          &nbsp;·&nbsp; ${p.skus_erp||0} SKUs ERP
+        </div>
+        <div class="vg-farol-row">${farolHtml}</div>
+      </div>`;
+    }).join("");
 }
 
 function renderArmazens(){
