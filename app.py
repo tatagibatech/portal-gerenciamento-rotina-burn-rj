@@ -62,7 +62,10 @@ def _garantir_collector():
 
 @app.route("/")
 def index():
-    return send_from_directory(STATIC_DIR, "index.html")
+    resp = send_from_directory(STATIC_DIR, "index.html")
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
 
 
 @app.get("/swagger.json")
