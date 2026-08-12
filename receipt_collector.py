@@ -1116,6 +1116,21 @@ class ReceiptCollector:
     def forcar_refresh(self):
         threading.Thread(target=self._refresh, daemon=True).start()
 
+    def bulk_import(self, receipts: list) -> int:
+        """Importa receipts pré-parseados diretamente no cache, sem chamar o WMS."""
+        imported = 0
+        with self._lock:
+            for r in receipts:
+                rk = r.get("receiptkey")
+                if not rk:
+                    continue
+                self._receipts[rk] = r
+                self._known_keys.add(rk)
+                imported += 1
+        if imported:
+            self._save_cache()
+        return imported
+
     def fetch_and_store(self, receiptkey: str) -> dict | None:
         """Busca uma ASN específica imediatamente e a adiciona ao estado."""
         try:

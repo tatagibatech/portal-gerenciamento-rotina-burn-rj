@@ -345,6 +345,21 @@ def api_debug_receipt():
     return jsonify(amostra)
 
 
+@app.post("/api/bulk-import")
+def api_bulk_import():
+    """Importa lista de ASNs pré-parseadas diretamente no cache (sem chamar o WMS)."""
+    try:
+        body = request.get_json(force=True, silent=True) or {}
+        receipts = body.get("receipts", [])
+        if not receipts:
+            return jsonify({"ok": False, "msg": "lista receipts vazia"}), 400
+        imported = collector.bulk_import(receipts)
+        return jsonify({"ok": True, "imported": imported})
+    except Exception as e:
+        log.error(f"Erro em /api/bulk-import: {e}")
+        return jsonify({"erro": str(e)}), 500
+
+
 @app.post("/api/webhook-asn")
 def api_webhook_asn():
     """
