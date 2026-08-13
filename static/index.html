@@ -791,9 +791,12 @@ button:disabled{opacity:.5;cursor:not-allowed}
 
       <!-- Quadro C2 -->
       <div class="cnt-quadro">
-        <div class="cnt-quadro-hdr c2">
+        <div class="cnt-quadro-hdr c2" style="display:flex;align-items:center;justify-content:space-between">
           <span>Contagem C2</span>
-          <span id="pkWmsTotal2" class="cnt-quadro-tot"></span>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span id="pkWmsTotal2" class="cnt-quadro-tot"></span>
+            <button class="btn btn-outline btn-sm" style="font-size:11px" onclick="abrirListaContagem(2)">🖨 Lista C2</button>
+          </div>
         </div>
         <div style="overflow-x:auto">
           <table class="backlog-table">
@@ -806,9 +809,12 @@ button:disabled{opacity:.5;cursor:not-allowed}
 
       <!-- Quadro C3 -->
       <div class="cnt-quadro">
-        <div class="cnt-quadro-hdr c3">
+        <div class="cnt-quadro-hdr c3" style="display:flex;align-items:center;justify-content:space-between">
           <span>Contagem C3</span>
-          <span id="pkWmsTotal3" class="cnt-quadro-tot"></span>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span id="pkWmsTotal3" class="cnt-quadro-tot"></span>
+            <button class="btn btn-outline btn-sm" style="font-size:11px" onclick="abrirListaContagem(3)">🖨 Lista C3</button>
+          </div>
         </div>
         <div style="overflow-x:auto">
           <table class="backlog-table">
@@ -1712,6 +1718,13 @@ function _renderAsnCards(containerId, asns){
         onclick="imprimirEtiquetaAsn('${rk}',${n})">🖨 Etiqueta</button>` : ""}
     </div>`;
   }).join("");
+}
+
+function abrirListaContagem(nivel){
+  const base = (location.hostname.includes('onrender.com') || location.hostname.includes('render.com'))
+    ? 'http://10.10.28.76:5002'
+    : '';
+  window.open(base + '/inventario/lista/' + nivel, '_blank');
 }
 
 function imprimirEtiquetaAsn(receiptkey, nivel){

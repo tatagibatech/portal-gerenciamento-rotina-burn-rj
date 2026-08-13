@@ -6,12 +6,15 @@ Backend Flask — serve o dashboard e as APIs de dados.
 import logging
 import os
 import json
+import io
+import base64
 import threading
 import time
 from datetime import datetime, timezone, timedelta
 
 import requests as _requests
-from flask import Flask, jsonify, request, send_from_directory
+import qrcode
+from flask import Flask, jsonify, request, send_from_directory, Response
 from flask_cors import CORS
 
 from receipt_collector import ReceiptCollector, DEPOSITOS, STATUS_ORDER
@@ -902,6 +905,166 @@ def api_inventario_finalizado():
     }
     log.info(f"Inventário finalizado — PDF: {dados.get('pdf')}")
     return jsonify({"ok": True})
+
+
+def _qr_b64(text: str) -> str:
+    qr = qrcode.QRCode(version=None, box_size=5, border=2,
+                       error_correction=qrcode.constants.ERROR_CORRECT_M)
+    qr.add_data(text)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return base64.b64encode(buf.getvalue()).decode()
+
+
+@app.get("/inventario/lista/<int:nivel>")
+def lista_contagem(nivel):
+    """Página imprimível com itens divergentes para recontagem (C2 ou C3)."""
+    if nivel not in (2, 3):
+        return "Nível inválido (use 2 ou 3)", 400
+    if not _painel_dados:
+        return "Dados do inventário não disponíveis.", 503
+
+    nivel_anterior = nivel - 1
+    prefixo  = _painel_dados.get("prefixo", "INVENTARIO")
+    itens    = _painel_dados.get("itens", [])
+    linhas   = _painel_dados.get("linhas_wms", [])
+    agora    = datetime.now(_BRT).strftime("%d/%m/%Y %H:%M")
+
+    status_alvo = "AGUARDA_C2" if nivel == 2 else "AGUARDA_C3"
+    itens_div   = [i for i in itens if i.get("status") == status_alvo]
+
+    # Monta índice de localização por (sku, dep_erp) para o nivel anterior
+    loc_idx: dict[tuple, list[dict]] = {}
+    for l in linhas:
+        if l.get("nivel") != nivel_anterior:
+            continue
+        key = (str(l.get("sku", "")), l.get("dep_erp"))
+        loc_idx.setdefault(key, []).append(l)
+
+    # Agrupa itens divergentes por armazem_wms
+    grupos: dict[str, list[dict]] = {}
+    for it in itens_div:
+        arm = it.get("armazem_wms") or it.get("deposito_nome") or "ARMZ"
+        grupos.setdefault(arm, []).append(it)
+
+    def _fmt(v, dec=5):
+        if v is None: return "—"
+        return f"{float(v):,.{dec}f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+    secoes_html = ""
+    for arm in sorted(grupos):
+        asn_key  = f"{prefixo}_{arm}_CONTAGEM{nivel}"
+        qr_img   = _qr_b64(asn_key)
+        itens_arm = grupos[arm]
+
+        # Expande por localização (um item pode estar em múltiplos locs)
+        linhas_rel = []
+        for it in itens_arm:
+            key  = (it["sku"], it.get("deposito"))
+            locs = loc_idx.get(key, [])
+            if locs:
+                for l in sorted(locs, key=lambda x: str(x.get("loc", ""))):
+                    qty_ant = it.get(f"c{nivel_anterior}")
+                    linhas_rel.append({
+                        "loc":     l.get("loc", "—"),
+                        "zona":    l.get("zona", ""),
+                        "sku":     it["sku"],
+                        "qty_erp": it.get("qty_erp"),
+                        "qty_ant": qty_ant,
+                        "dif":     round(float(qty_ant or 0) - float(it.get("qty_erp") or 0), 5),
+                    })
+            else:
+                qty_ant = it.get(f"c{nivel_anterior}")
+                linhas_rel.append({
+                    "loc": "—", "zona": "",
+                    "sku": it["sku"],
+                    "qty_erp": it.get("qty_erp"),
+                    "qty_ant": qty_ant,
+                    "dif":  round(float(qty_ant or 0) - float(it.get("qty_erp") or 0), 5),
+                })
+
+        linhas_rel.sort(key=lambda x: str(x["loc"]))
+
+        rows = ""
+        for r in linhas_rel:
+            dif     = r["dif"]
+            dif_cor = "#DC2626" if dif < 0 else ("#16A34A" if dif > 0 else "#374151")
+            dif_str = (("+" if dif > 0 else "") + _fmt(dif)) if dif != 0 else "OK"
+            rows += f"""<tr>
+              <td><input type="checkbox" style="width:18px;height:18px"></td>
+              <td style="font-family:monospace;font-weight:700">{r['loc']}</td>
+              <td style="color:#64748B;font-size:11px">{r['zona']}</td>
+              <td style="font-weight:700">{r['sku']}</td>
+              <td style="text-align:right">{_fmt(r['qty_erp'])}</td>
+              <td style="text-align:right">{_fmt(r['qty_ant'])}</td>
+              <td style="text-align:right;color:{dif_cor};font-weight:700">{dif_str}</td>
+              <td style="min-width:80px;border-bottom:1px solid #94A3B8">&nbsp;</td>
+            </tr>"""
+
+        secoes_html += f"""
+        <div class="secao">
+          <div class="secao-hdr">
+            <div>
+              <div class="secao-titulo">C{nivel} — {arm}</div>
+              <div class="secao-asn">{asn_key}</div>
+              <div class="secao-info">{len(linhas_rel)} endereço(s) divergente(s)</div>
+            </div>
+            <img src="data:image/png;base64,{qr_img}" class="qr-img" alt="QR {asn_key}">
+          </div>
+          <table>
+            <thead><tr>
+              <th style="width:30px"></th>
+              <th>Endereço</th><th>Zona</th><th>SKU</th>
+              <th style="text-align:right">Qtd ERP</th>
+              <th style="text-align:right">Qtd C{nivel_anterior}</th>
+              <th style="text-align:right">Diferença</th>
+              <th style="min-width:80px">Nova Qtd</th>
+            </tr></thead>
+            <tbody>{rows}</tbody>
+          </table>
+        </div>"""
+
+    html = f"""<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Lista Contagem C{nivel} — {prefixo}</title>
+<style>
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{font-family:'Segoe UI',Arial,sans-serif;font-size:12px;color:#1E293B;background:#fff;padding:16px}}
+h1{{font-size:16px;font-weight:800;color:#1E3A5F;margin-bottom:2px}}
+.sub{{font-size:11px;color:#64748B;margin-bottom:16px}}
+.secao{{border:1px solid #CBD5E1;border-radius:8px;margin-bottom:20px;overflow:hidden;page-break-inside:avoid}}
+.secao-hdr{{background:#1E3A5F;color:#fff;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;gap:16px}}
+.secao-titulo{{font-size:14px;font-weight:800;letter-spacing:.3px}}
+.secao-asn{{font-family:monospace;font-size:11px;opacity:.85;margin-top:2px}}
+.secao-info{{font-size:10px;opacity:.7;margin-top:4px}}
+.qr-img{{width:80px;height:80px;background:#fff;border-radius:4px;padding:3px}}
+table{{width:100%;border-collapse:collapse;font-size:11px}}
+th{{background:#F1F5F9;padding:6px 10px;text-align:left;font-weight:700;color:#475569;border-bottom:2px solid #CBD5E1}}
+td{{padding:6px 10px;border-bottom:1px solid #E2E8F0;vertical-align:middle}}
+tr:hover td{{background:#F8FAFC}}
+.rodape{{margin-top:24px;font-size:10px;color:#94A3B8;text-align:center;border-top:1px solid #E2E8F0;padding-top:10px}}
+@media print{{
+  body{{padding:8px}}
+  .no-print{{display:none}}
+  .secao{{page-break-inside:avoid}}
+}}
+</style>
+</head>
+<body>
+<div class="no-print" style="margin-bottom:16px">
+  <button onclick="window.print()" style="padding:8px 18px;background:#1E3A5F;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:700">🖨 Imprimir</button>
+</div>
+<h1>Lista de Recontagem — Contagem C{nivel}</h1>
+<div class="sub">Inventário: <strong>{prefixo}</strong> &nbsp;|&nbsp; Gerado em: {agora} &nbsp;|&nbsp; {len(itens_div)} SKU(s) divergente(s)</div>
+{secoes_html if secoes_html else '<p style="color:#64748B;padding:20px">Nenhum item aguardando C' + str(nivel) + '.</p>'}
+<div class="rodape">BURN RJ — Painel de Inventário — Limppano</div>
+</body></html>"""
+
+    return Response(html, mimetype="text/html; charset=utf-8")
 
 
 @app.get("/api/inventario/pending")
