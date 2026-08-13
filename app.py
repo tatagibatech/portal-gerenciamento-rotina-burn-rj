@@ -483,6 +483,43 @@ _pending_abrir      = None   # timestamp do comando "abrir inventário" aguardan
 _pending_finalizar  = None   # timestamp do comando "finalizar inventário" aguardando execução local
 _inventario_final   = {}     # dados do relatório final (pdf gerado, timestamp)
 
+# Arquivo de persistência de pending (sobrevive a restarts de dyno no Render)
+_PENDING_FILE = os.path.join(os.path.dirname(__file__), "pending_inv.json")
+
+
+def _pending_save():
+    """Persiste os comandos pendentes em arquivo."""
+    try:
+        data = {}
+        if _pending_abrir:
+            data["abrir"] = _pending_abrir
+        if _pending_finalizar:
+            data["finalizar"] = _pending_finalizar
+        if data:
+            with open(_PENDING_FILE, "w", encoding="utf-8") as f:
+                json.dump(data, f)
+        elif os.path.exists(_PENDING_FILE):
+            os.remove(_PENDING_FILE)
+    except Exception as e:
+        log.warning(f"Não foi possível salvar pending: {e}")
+
+
+def _pending_load():
+    """Carrega pending persistido do arquivo (chamado na primeira poll após reinício)."""
+    global _pending_abrir, _pending_finalizar
+    if not os.path.exists(_PENDING_FILE):
+        return
+    try:
+        data = json.loads(open(_PENDING_FILE, encoding="utf-8").read())
+        if data.get("abrir") and not _pending_abrir:
+            _pending_abrir = data["abrir"]
+            log.info(f"Pending 'abrir' restaurado do arquivo: {_pending_abrir}")
+        if data.get("finalizar") and not _pending_finalizar:
+            _pending_finalizar = data["finalizar"]
+            log.info(f"Pending 'finalizar' restaurado do arquivo: {_pending_finalizar}")
+    except Exception as e:
+        log.warning(f"Não foi possível carregar pending: {e}")
+
 
 @app.post("/api/inventario/dados")
 def api_inventario_upload():
@@ -568,6 +605,7 @@ def api_abrir_inventario():
     """Sinaliza ao script local para carregar a base ERP e criar as ASNs de C1."""
     global _pending_abrir
     _pending_abrir = datetime.now(_BRT).isoformat(timespec="seconds")
+    _pending_save()
     log.info("Comando 'abrir inventário' recebido — aguardando execução local.")
     return jsonify({
         "ok":  True,
@@ -587,6 +625,7 @@ def api_cancelar_inventario():
     _inventario_final   = {}
     _pending_abrir      = None
     _pending_finalizar  = None
+    _pending_save()
     log.info("Inventário cancelado — todos os dados foram limpos.")
     return jsonify({"ok": True, "msg": "Inventário cancelado. Dados limpos."})
 
@@ -596,6 +635,7 @@ def api_finalizar_total():
     """Sinaliza ao script local para gerar o relatório PDF final e enviar por email."""
     global _pending_finalizar
     _pending_finalizar = datetime.now(_BRT).isoformat(timespec="seconds")
+    _pending_save()
     log.info("Comando 'finalizar inventário' recebido — aguardando execução local.")
     return jsonify({
         "ok":  True,
@@ -632,6 +672,7 @@ def api_inventario_finalizado():
 def api_inventario_pending():
     """Retorna e limpa comandos pendentes para execução local (chamado pelo auto-update)."""
     global _pending_abrir, _pending_finalizar
+    _pending_load()  # restaura do arquivo se reiniciou
     resp = {"abrir_inventario": False, "finalizar_inventario": False}
     if _pending_abrir:
         resp["abrir_inventario"] = True
@@ -641,6 +682,7 @@ def api_inventario_pending():
         resp["finalizar_inventario"] = True
         resp["ts_finalizar"] = _pending_finalizar
         _pending_finalizar = None
+    _pending_save()  # limpa arquivo após consumir
     return jsonify(resp)
 
 
