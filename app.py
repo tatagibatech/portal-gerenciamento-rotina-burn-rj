@@ -68,9 +68,122 @@ def index():
     return resp
 
 
+def _zpl_inventario(receiptkey: str, arm_display: str, nivel_str: str,
+                    dpi: int = 203, width_mm: float = 95.0, height_mm: float = 90.0) -> bytes:
+    """Gera ZPL para etiqueta de inventário com dimensões exatas 95×90mm."""
+    def dots(mm: float) -> int:
+        return max(1, round(mm * dpi / 25.4))
+
+    W = dots(width_mm)
+    H = dots(height_mm)
+    pad = dots(3)
+
+    f_logo = dots(6.0)
+    f_arm  = dots(7.5)
+    f_cont = dots(4.5)
+    f_ban  = dots(3.5)
+    f_doc  = dots(3.5)
+    f_dt   = dots(2.5)
+
+    from datetime import datetime as _dt
+    agora = _dt.now().strftime("%d/%m/%Y %H:%M")
+
+    ln = ["^XA", f"^PW{W}", f"^LL{H}", "^CI28", "^LH0,0", "^MD5"]
+    y = pad
+
+    ln += [f"^FO0,{y}^A0N,{f_logo},{f_logo}^FB{W},1,0,C^FDLIMPPANO^FS"]
+    y += f_logo + dots(2)
+
+    ln += [f"^FO0,{y}^GB{W},3,3^FS"]
+    y += dots(2)
+
+    ln += [f"^FO0,{y}^A0N,{f_arm},{f_arm}^FB{W},1,0,C^FD{arm_display}^FS"]
+    y += f_arm + dots(1)
+
+    ln += [f"^FO0,{y}^A0N,{f_cont},{f_cont}^FB{W},1,0,C^FDCONTAGEM {nivel_str}^FS"]
+    y += f_cont + dots(1.5)
+
+    ln += [f"^FO0,{y}^GB{W},3,3^FS"]
+    y += dots(2)
+
+    ban_h = f_ban + dots(6)
+    ln += [
+        f"^FO0,{y}^GB{W},{ban_h},{ban_h}^FS",
+        f"^FO0,{y + (ban_h - f_ban) // 2}^A0N,{f_ban},{f_ban}^FB{W},1,0,C^FR^FDINVENTARIO^FS",
+    ]
+    y += ban_h + dots(2)
+
+    text_area = f_doc + dots(2) + f_dt + dots(2)
+    qr_area = max(dots(15), H - pad - y - text_area)
+    modules = 33  # QR type 4 (≤34 chars, M correction) = 33×33 módulos
+    mag = max(2, min(10, qr_area // modules))
+    qr_px = modules * mag
+    qr_x = max(0, (W - qr_px) // 2)
+    qr_y = y + max(0, (qr_area - qr_px) // 2)
+    ln += [f"^FO{qr_x},{qr_y}^BQN,2,{mag}^FDQA,{receiptkey}^FS"]
+    y += qr_area
+
+    ln += [f"^FO0,{y}^A0N,{f_doc},{f_doc}^FB{W},1,0,C^FD{receiptkey}^FS"]
+    y += f_doc + dots(1.5)
+    ln += [f"^FO0,{y}^A0N,{f_dt},{f_dt}^FB{W},1,0,C^FD{agora}^FS"]
+    ln += ["", "^PQ1", "^XZ"]
+    return "\n".join(ln).encode("utf-8")
+
+
+@app.get("/api/impressoras")
+def api_impressoras():
+    """Lista impressoras Zebra disponíveis (Windows) ou vazio (Linux/Render)."""
+    try:
+        import win32print
+        todas = [info[2] for info in win32print.EnumPrinters(
+            win32print.PRINTER_ENUM_LOCAL | win32print.PRINTER_ENUM_CONNECTIONS)]
+        zebra = [p for p in todas if any(
+            k in p.upper() for k in ("ZEBRA", "ZDESIGNER", "ZD", "ZT", "GK", "GX", "ZPL"))]
+        return jsonify(zebra if zebra else todas)
+    except Exception:
+        return jsonify([])
+
+
+@app.route("/etiqueta/<receiptkey>/imprimir", methods=["POST"])
+def etiqueta_imprimir(receiptkey: str):
+    """Envia ZPL direto para a Zebra (Windows local) com dimensões exatas 95×90mm."""
+    try:
+        import win32print
+    except ImportError:
+        return jsonify({"ok": False, "erro": "Impressão direta indisponível neste servidor."}), 400
+    try:
+        data = request.get_json(silent=True) or {}
+        printer_name = data.get("impressora", "")
+        if not printer_name:
+            return jsonify({"ok": False, "erro": "Impressora não especificada."}), 400
+
+        parts = receiptkey.split("_CONTAGEM")
+        nivel_str = parts[1] if len(parts) > 1 else "?"
+        arm = parts[0].split("_")[-1] if parts else "?"
+        arm_display = (arm[:4] + " - " + arm[4:]) if len(arm) > 4 else arm
+
+        zpl = _zpl_inventario(receiptkey, arm_display, nivel_str)
+
+        ph = win32print.OpenPrinter(printer_name)
+        try:
+            win32print.StartDocPrinter(ph, 1, ("Etiqueta Inventario", None, "RAW"))
+            win32print.StartPagePrinter(ph)
+            win32print.WritePrinter(ph, zpl)
+            win32print.EndPagePrinter(ph)
+            win32print.EndDocPrinter(ph)
+        finally:
+            win32print.ClosePrinter(ph)
+
+        log.info(f"ZPL enviado para '{printer_name}': {receiptkey}")
+        return jsonify({"ok": True})
+    except Exception as e:
+        log.error(f"Erro ao imprimir ZPL: {e}")
+        return jsonify({"ok": False, "erro": str(e)}), 500
+
+
 @app.route("/etiqueta/<receiptkey>")
 def etiqueta(receiptkey: str):
-    """Gera etiqueta 95×90mm com QR code embutido (sem CDN)."""
+    """Gera etiqueta 95×90mm com QR code embutido e impressão direta ZPL."""
     import io, base64
     import qrcode as _qr
     from markupsafe import escape
@@ -82,13 +195,14 @@ def etiqueta(receiptkey: str):
     from datetime import datetime as _dt
     agora = _dt.now().strftime("%d/%m/%Y %H:%M")
 
-    # Gera QR code como PNG base64
-    qr = _qr.QRCode(error_correction=_qr.constants.ERROR_CORRECT_M, box_size=5, border=2)
+    qr = _qr.QRCode(error_correction=_qr.constants.ERROR_CORRECT_M, box_size=6, border=2)
     qr.add_data(receiptkey)
     qr.make(fit=True)
     buf = io.BytesIO()
     qr.make_image(fill_color="black", back_color="white").save(buf, format="PNG")
     qr_b64 = base64.b64encode(buf.getvalue()).decode()
+
+    rk_js = receiptkey.replace("\\", "\\\\").replace('"', '\\"')
 
     html = f"""<!DOCTYPE html>
 <html lang="pt-BR">
@@ -100,11 +214,14 @@ def etiqueta(receiptkey: str):
   body{{font-family:'Segoe UI',Arial,sans-serif;background:#e8eef7;
         display:flex;flex-direction:column;align-items:center;padding:16px}}
   .controls{{background:#1A5276;color:#fff;padding:8px 14px;border-radius:8px;
-    margin-bottom:14px;display:flex;align-items:center;gap:10px;width:95mm}}
-  .controls span{{flex:1;font-size:11px}}
-  .btn-p{{background:#fff;color:#1A5276;border:none;padding:5px 14px;border-radius:6px;
-    font-weight:700;font-size:12px;cursor:pointer}}
+    margin-bottom:14px;display:flex;align-items:center;gap:8px;width:95mm;flex-wrap:wrap}}
+  .ctrl-info{{flex:1;font-size:10px;min-width:80px}}
+  .sel-imp{{background:#fff;color:#1A5276;border:none;padding:4px 6px;border-radius:5px;
+    font-size:11px;font-weight:700;cursor:pointer;display:none;max-width:130px}}
+  .btn-p{{background:#fff;color:#1A5276;border:none;padding:5px 12px;border-radius:6px;
+    font-weight:700;font-size:12px;cursor:pointer;white-space:nowrap}}
   .btn-p:hover{{background:#d6eaf8}}
+  .btn-p:disabled{{opacity:.6;cursor:wait}}
   .label{{width:95mm;height:90mm;background:#fff;border:1.5px solid #17202a;
     display:flex;flex-direction:column;padding:3mm;overflow:hidden}}
   .logo-txt{{text-align:center;font-size:6mm;font-weight:900;color:#1A5276;
@@ -112,13 +229,13 @@ def etiqueta(receiptkey: str):
   .sep{{height:0.5mm;background:#17202a;flex-shrink:0}}
   .arm{{text-align:center;font-size:7.5mm;font-weight:900;color:#17202a;
     letter-spacing:2px;padding:1mm 0 0;line-height:1.1;flex-shrink:0}}
-  .contagem{{text-align:center;font-size:5mm;font-weight:700;color:#17202a;
+  .contagem{{text-align:center;font-size:4.5mm;font-weight:700;color:#17202a;
     letter-spacing:2px;padding:0.5mm 0 1mm;line-height:1;flex-shrink:0}}
   .banda{{background:#17202a;color:#fff;text-align:center;font-size:3.5mm;
-    font-weight:700;letter-spacing:2px;padding:1mm 0;margin:1mm 0;flex-shrink:0}}
+    font-weight:700;letter-spacing:2px;padding:1.5mm 0;margin:1mm 0;flex-shrink:0}}
   .qr-wrap{{flex:1;min-height:0;display:flex;justify-content:center;
     align-items:center;overflow:hidden}}
-  .qr-wrap img{{display:block;max-height:38mm;max-width:38mm;width:auto;height:auto;
+  .qr-wrap img{{display:block;max-height:40mm;max-width:40mm;width:auto;height:auto;
     image-rendering:pixelated}}
   .doc{{text-align:center;font-size:3.5mm;font-weight:700;color:#17202a;
     font-family:'Courier New',monospace;letter-spacing:0.3mm;padding:1mm 0 0;
@@ -131,8 +248,9 @@ def etiqueta(receiptkey: str):
 </head>
 <body>
   <div class="controls">
-    <span>C{nivel_str} — {arm_display} &nbsp;|&nbsp; {agora}</span>
-    <button class="btn-p" onclick="window.print()">&#128424; Imprimir</button>
+    <span class="ctrl-info">C{nivel_str} — {arm_display}&nbsp;|&nbsp;{agora}</span>
+    <select id="sel-imp" class="sel-imp"></select>
+    <button class="btn-p" id="btn-imp">&#128424; Imprimir</button>
   </div>
   <div class="label">
     <div class="logo-txt">LIMPPANO</div>
@@ -147,6 +265,63 @@ def etiqueta(receiptkey: str):
     <div class="doc">{rk}</div>
     <div class="dt">{agora}</div>
   </div>
+<script>
+const RK = "{rk_js}";
+const SEL = document.getElementById('sel-imp');
+const BTN = document.getElementById('btn-imp');
+
+async function carregarImpressoras() {{
+  try {{
+    const r = await fetch('/api/impressoras');
+    const lst = await r.json();
+    if (lst && lst.length > 0) {{
+      SEL.style.display = 'block';
+      lst.forEach(function(p) {{
+        const o = document.createElement('option');
+        o.value = p; o.textContent = p.length > 22 ? p.substring(0,20)+'…' : p;
+        o.title = p;
+        SEL.appendChild(o);
+      }});
+    }}
+  }} catch(e) {{}}
+}}
+
+async function doImprimir() {{
+  if (SEL.value) {{
+    BTN.disabled = true; BTN.textContent = '⏳ Enviando...';
+    try {{
+      const r = await fetch('/etiqueta/' + encodeURIComponent(RK) + '/imprimir', {{
+        method: 'POST',
+        headers: {{'Content-Type': 'application/json'}},
+        body: JSON.stringify({{impressora: SEL.value}})
+      }});
+      const d = await r.json();
+      if (d.ok) {{
+        BTN.textContent = '✓ Impresso!';
+        BTN.style.background = '#a9dfbf';
+        BTN.style.color = '#1e8449';
+      }} else {{
+        BTN.textContent = '✗ Erro';
+        alert('Erro ao imprimir: ' + d.erro);
+      }}
+    }} catch(e) {{
+      BTN.textContent = '✗ Falha';
+      alert('Falha de rede: ' + e);
+    }}
+    setTimeout(function() {{
+      BTN.disabled = false;
+      BTN.textContent = '🖨 Imprimir';
+      BTN.style.background = '';
+      BTN.style.color = '';
+    }}, 3000);
+  }} else {{
+    window.print();
+  }}
+}}
+
+BTN.addEventListener('click', doImprimir);
+carregarImpressoras();
+</script>
 </body>
 </html>"""
     from flask import Response
