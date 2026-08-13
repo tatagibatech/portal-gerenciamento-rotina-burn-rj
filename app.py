@@ -989,18 +989,12 @@ def lista_contagem(nivel):
 
         rows = ""
         for r in linhas_rel:
-            dif     = r["dif"]
-            dif_cor = "#DC2626" if dif < 0 else ("#16A34A" if dif > 0 else "#374151")
-            dif_str = (("+" if dif > 0 else "") + _fmt(dif)) if dif != 0 else "OK"
             rows += f"""<tr>
               <td><input type="checkbox" style="width:18px;height:18px"></td>
               <td style="font-family:monospace;font-weight:700">{r['loc']}</td>
               <td style="color:#64748B;font-size:11px">{r['zona']}</td>
               <td style="font-weight:700">{r['sku']}</td>
-              <td style="text-align:right">{_fmt(r['qty_erp'])}</td>
-              <td style="text-align:right">{_fmt(r['qty_ant'])}</td>
-              <td style="text-align:right;color:{dif_cor};font-weight:700">{dif_str}</td>
-              <td style="min-width:80px;border-bottom:1px solid #94A3B8">&nbsp;</td>
+              <td style="min-width:90px;border-bottom:1px solid #94A3B8">&nbsp;</td>
             </tr>"""
 
         secoes_html += f"""
@@ -1017,10 +1011,7 @@ def lista_contagem(nivel):
             <thead><tr>
               <th style="width:30px"></th>
               <th>Endereço</th><th>Zona</th><th>SKU</th>
-              <th style="text-align:right">Qtd ERP</th>
-              <th style="text-align:right">Qtd C{nivel_anterior}</th>
-              <th style="text-align:right">Diferença</th>
-              <th style="min-width:80px">Nova Qtd</th>
+              <th style="min-width:90px">Nova Qtd</th>
             </tr></thead>
             <tbody>{rows}</tbody>
           </table>
