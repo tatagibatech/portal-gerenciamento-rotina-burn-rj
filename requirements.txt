@@ -4,3 +4,4 @@ requests>=2.31
 urllib3>=2.0
 gunicorn>=22.0
 qrcode>=7.4
+openpyxl>=3.1

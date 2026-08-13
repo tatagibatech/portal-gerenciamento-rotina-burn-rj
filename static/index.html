@@ -729,6 +729,13 @@ button:disabled{opacity:.5;cursor:not-allowed}
       <div style="color:var(--muted);font-size:12px">Aguardando dados...</div>
     </div>
 
+    <!-- Botões de ação do painel -->
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">
+      <button class="btn btn-outline btn-sm" onclick="exportarEnderecosExcel()" id="btnEndExcel">
+        📥 Excel Endereços (Lidos / Não Lidos)
+      </button>
+    </div>
+
     <!-- Barras de progresso por armazém -->
     <div id="invCntBars" style="margin-bottom:16px"></div>
 
@@ -1727,6 +1734,19 @@ function abrirListaContagem(nivel){
     ? 'http://10.10.28.76:5002'
     : '';
   window.open(base + '/inventario/lista/' + nivel, '_blank');
+}
+
+function exportarEnderecosExcel(){
+  // Render não tem acesso ao sistema de arquivos — redireciona para servidor local
+  const base = (location.hostname.includes('onrender.com') || location.hostname.includes('render.com'))
+    ? 'http://10.10.28.76:5002'
+    : '';
+  const btn = document.getElementById('btnEndExcel');
+  if (btn) { btn.disabled = true; btn.textContent = 'Gerando...'; }
+  window.open(base + '/inventario/enderecos/excel', '_blank');
+  setTimeout(() => {
+    if (btn) { btn.disabled = false; btn.textContent = '📥 Excel Endereços (Lidos / Não Lidos)'; }
+  }, 3000);
 }
 
 function imprimirEtiquetaAsn(receiptkey, nivel){

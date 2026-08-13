@@ -1063,6 +1063,96 @@ tr:hover td{{background:#F8FAFC}}
     return Response(html, mimetype="text/html; charset=utf-8")
 
 
+@app.get("/inventario/enderecos/excel")
+def inventario_enderecos_excel():
+    """Gera Excel com todos os endereços e status lido/não lido por armazém."""
+    from openpyxl import Workbook
+    from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+
+    if not _painel_dados:
+        return "Dados não disponíveis. Execute enviar_painel.py primeiro.", 503
+
+    enderecos = _painel_dados.get("enderecos_status", [])
+    if not enderecos:
+        return "Lista de endereços não encontrada nos dados. Regenere o painel.", 404
+
+    verde  = PatternFill("solid", fgColor="C6EFCE")
+    verd_f = Font(color="276221", bold=False)
+    verm   = PatternFill("solid", fgColor="FFDFD6")
+    verm_f = Font(color="9C0006", bold=False)
+    hdr_f  = Font(bold=True, color="FFFFFF")
+    hdr_bg = PatternFill("solid", fgColor="1E3A5F")
+    borda  = Border(
+        bottom=Side(style="thin", color="D0D7DE"),
+        right=Side(style="thin", color="D0D7DE"),
+    )
+    centro = Alignment(horizontal="center")
+
+    wb = Workbook()
+    wb.remove(wb.active)
+
+    armazens = sorted(set(e["armazem"] for e in enderecos if e["armazem"]))
+    for arm in armazens:
+        ws = wb.create_sheet(arm)
+        items = [e for e in enderecos if e["armazem"] == arm]
+        lidos    = sum(1 for e in items if e["lido"])
+        nao_lidos = len(items) - lidos
+        pct = round(lidos / len(items) * 100, 1) if items else 0.0
+
+        # Cabeçalho resumo
+        ws.merge_cells("A1:E1")
+        ws["A1"] = f"{arm} — {lidos} lidos / {nao_lidos} não lidos / {len(items)} total  ({pct}%)"
+        ws["A1"].font = Font(bold=True, size=12)
+        ws["A1"].fill = PatternFill("solid", fgColor="EFF6FF")
+        ws.row_dimensions[1].height = 22
+
+        # Headers
+        headers = ["Endereço", "Zona", "Tipo", "Status", "Progresso"]
+        for col, h in enumerate(headers, 1):
+            c = ws.cell(row=2, column=col, value=h)
+            c.font = hdr_f
+            c.fill = hdr_bg
+            c.alignment = centro
+
+        # Dados
+        for row, e in enumerate(items, 3):
+            ws.cell(row=row, column=1, value=e["loc"]).font = Font(name="Courier New", size=9)
+            ws.cell(row=row, column=2, value=e["zona"])
+            ws.cell(row=row, column=3, value=e["tipo"])
+            status_val = "Lido" if e["lido"] else "Não lido"
+            c_status = ws.cell(row=row, column=4, value=status_val)
+            c_status.alignment = centro
+            if e["lido"]:
+                for col in range(1, 5):
+                    ws.cell(row=row, column=col).fill = verde
+                c_status.font = verd_f
+            else:
+                for col in range(1, 5):
+                    ws.cell(row=row, column=col).fill = verm
+                c_status.font = verm_f
+            ws.cell(row=row, column=5)  # vazio (coluna progresso visual)
+
+        # Larguras aproximadas
+        ws.column_dimensions["A"].width = 16
+        ws.column_dimensions["B"].width = 20
+        ws.column_dimensions["C"].width = 12
+        ws.column_dimensions["D"].width = 12
+        ws.column_dimensions["E"].width = 6
+
+        # Congelar linha de cabeçalho
+        ws.freeze_panes = "A3"
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    ts = datetime.now(_BRT).strftime("%Y%m%d_%H%M")
+    return Response(
+        buf.getvalue(),
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename=enderecos_{ts}.xlsx"},
+    )
+
+
 @app.get("/api/inventario/pending")
 def api_inventario_pending():
     """Retorna e limpa comandos pendentes para execução local (chamado pelo auto-update)."""
