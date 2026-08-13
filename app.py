@@ -932,8 +932,12 @@ def lista_contagem(nivel):
     linhas   = _painel_dados.get("linhas_wms", [])
     agora    = datetime.now(_BRT).strftime("%d/%m/%Y %H:%M")
 
-    status_alvo = "AGUARDA_C2" if nivel == 2 else "AGUARDA_C3"
-    itens_div   = [i for i in itens if i.get("status") == status_alvo]
+    if nivel == 2:
+        itens_div = [i for i in itens if i.get("status") in {"AGUARDA_C2", "DIVERGENCIA_WMS"}]
+    else:
+        # C3: itens aguardando C3 + Sobras WMS que já foram recontadas em C2
+        itens_div = [i for i in itens if i.get("status") == "AGUARDA_C3"
+                     or (i.get("status") == "DIVERGENCIA_WMS" and i.get("c2") is not None)]
 
     # Monta índice de localização por (sku, dep_erp) para o nivel anterior
     loc_idx: dict[tuple, list[dict]] = {}
