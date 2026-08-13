@@ -1591,7 +1591,8 @@ function renderInventario(silencioso=false){
     const itens    = pd.itens || [];
     const total    = itens.length;
     const itensErp = itens.filter(i => i.status !== "DIVERGENCIA_WMS");
-    const contados = itensErp.filter(i => i.c1 !== null && i.c1 !== undefined).length;
+    const divWms   = itens.filter(i => i.status === "DIVERGENCIA_WMS" && i.c1 != null).length;
+    const contados = itensErp.filter(i => i.c1 !== null && i.c1 !== undefined).length + divWms;
     const c1_ok    = itensErp.filter(i => i.status === "C1_OK").length;
     const concl    = itens.filter(i => ["C1_OK","C2_OK","CONCLUIDO"].includes(i.status)).length;
     const pend     = itens.filter(i => i.status === "PENDENTE").length;
@@ -2025,12 +2026,13 @@ function setInvSubtab(id){
 
 function _invStatusStyle(s){
   const m = {
-    PENDENTE:   ["#95A5A6","Pendente"],
-    C1_OK:      ["#22C55E","C1 OK"],
-    AGUARDA_C2: ["#F59E0B","Aguarda C2"],
-    C2_OK:      ["#2980B9","C2 OK"],
-    AGUARDA_C3: ["#E67E22","Aguarda C3"],
-    CONCLUIDO:  ["#1ABC9C","Concluído"],
+    PENDENTE:       ["#95A5A6","Pendente"],
+    C1_OK:          ["#22C55E","C1 OK"],
+    AGUARDA_C2:     ["#F59E0B","Aguarda C2"],
+    C2_OK:          ["#2980B9","C2 OK"],
+    AGUARDA_C3:     ["#E67E22","Aguarda C3"],
+    CONCLUIDO:      ["#1ABC9C","Concluído"],
+    DIVERGENCIA_WMS:["#DC2626","Sobra WMS"],
   };
   return m[s] || ["#999","?"];
 }
