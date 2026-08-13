@@ -758,7 +758,7 @@ button:disabled{opacity:.5;cursor:not-allowed}
           <option value="">Todos os status</option>
           <option>PENDENTE</option><option>C1_OK</option><option>AGUARDA_C2</option>
           <option>C2_OK</option><option>AGUARDA_C3</option><option>CONCLUIDO</option>
-          <option>DIVERGENCIA_WMS</option><option>SOBRA_WMS_OK</option>
+          <option>DIVERGENCIA_WMS</option><option>SOBRA_WMS_OK</option><option>FALTA_WMS</option>
         </select>
         <span id="pkErpTotal" style="font-size:11px;color:var(--muted);margin-left:auto"></span>
       </div>
@@ -1666,7 +1666,7 @@ function renderInventario(silencioso=false){
     const divWms   = itens.filter(i => _isWmsExtra(i.status) && i.c1 != null).length;
     const contados = itensErp.filter(i => i.c1 !== null && i.c1 !== undefined).length + divWms;
     const c1_ok    = itensErp.filter(i => i.status === "C1_OK").length;
-    const concl    = itens.filter(i => ["C1_OK","C2_OK","CONCLUIDO","SOBRA_WMS_OK"].includes(i.status)).length;
+    const concl    = itens.filter(i => ["C1_OK","C2_OK","CONCLUIDO","SOBRA_WMS_OK","FALTA_WMS"].includes(i.status)).length;
     const pend     = itens.filter(i => i.status === "PENDENTE").length;
     const em_c2    = itens.filter(i => i.status === "AGUARDA_C2").length;
     const em_c3    = itens.filter(i => i.status === "AGUARDA_C3").length;
@@ -1861,11 +1861,12 @@ function renderVisaoGeral(){
         } else if (finN) {
           barPct = 100; barCor = "#22C55E"; metaStr = "100%";
           btnHtml = `<button class="vg-nivel-btn done" disabled>Finalizado ✓</button>`;
-        } else if (isAt) {
-          barPct = fill; barCor = cor; metaStr = pct.toFixed(1) + "%";
-          btnHtml = `<button class="vg-nivel-btn" onclick="finalizarContagem('${arm}',${n})">Finalizar C${n}</button>`;
         } else {
-          metaStr = "—";
+          // ASN existe e não finalizada → botão sempre visível (independente de ser o nível "ativo")
+          barPct = isAt ? fill : 0;
+          barCor = isAt ? cor : "#94A3B8";
+          metaStr = isAt ? pct.toFixed(1) + "%" : "0.0%";
+          btnHtml = `<button class="vg-nivel-btn" onclick="finalizarContagem('${arm}',${n})">Finalizar C${n}</button>`;
         }
 
         return `<div class="vg-nivel-row">
@@ -2162,6 +2163,7 @@ function _invStatusStyle(s){
     CONCLUIDO:      ["#1ABC9C","Concluído"],
     DIVERGENCIA_WMS: ["#DC2626","Sobra WMS"],
     SOBRA_WMS_OK:    ["#0891B2","Sobra WMS OK"],
+    FALTA_WMS:       ["#7C3AED","Falta WMS"],
   };
   return m[s] || ["#999","?"];
 }
