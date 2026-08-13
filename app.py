@@ -405,7 +405,9 @@ def api_webhook_asn():
 _inventario_dados = {}  # dados em memória — recarregados via POST /api/inventario/dados
 _painel_dados     = {}  # dados do painel ERP×WMS — recarregados via POST /api/inventario/painel
 _finalizacoes     = {}  # registros de finalização por nível — POST /api/inventario/finalizar
-_pending_abrir    = None  # timestamp do comando "abrir inventário" aguardando execução local
+_pending_abrir      = None   # timestamp do comando "abrir inventário" aguardando execução local
+_pending_finalizar  = None   # timestamp do comando "finalizar inventário" aguardando execução local
+_inventario_final   = {}     # dados do relatório final (pdf gerado, timestamp)
 
 
 @app.post("/api/inventario/dados")
@@ -500,15 +502,62 @@ def api_abrir_inventario():
     })
 
 
+@app.post("/api/inventario/cancelar")
+def api_cancelar_inventario():
+    """Limpa todos os dados de inventário da memória (reset para estado inicial)."""
+    global _inventario_dados, _painel_dados, _finalizacoes, _inventario_final
+    global _pending_abrir, _pending_finalizar
+    _inventario_dados   = {}
+    _painel_dados       = {}
+    _finalizacoes       = {}
+    _inventario_final   = {}
+    _pending_abrir      = None
+    _pending_finalizar  = None
+    log.info("Inventário cancelado — todos os dados foram limpos.")
+    return jsonify({"ok": True, "msg": "Inventário cancelado. Dados limpos."})
+
+
+@app.post("/api/inventario/finalizar_total")
+def api_finalizar_total():
+    """Sinaliza ao script local para gerar o relatório PDF final e enviar por email."""
+    global _pending_finalizar
+    _pending_finalizar = datetime.now(_BRT).isoformat(timespec="seconds")
+    log.info("Comando 'finalizar inventário' recebido — aguardando execução local.")
+    return jsonify({
+        "ok":  True,
+        "msg": "Comando recebido. O relatório será gerado e enviado por email em ~1 min.",
+        "ts":  _pending_finalizar,
+    })
+
+
+@app.post("/api/inventario/finalizado")
+def api_inventario_finalizado():
+    """Recebe confirmação do script local após geração do PDF."""
+    global _inventario_final
+    dados = request.get_json(force=True, silent=True) or {}
+    _inventario_final = {
+        "finalizado_em": dados.get("finalizado_em"),
+        "pdf":           dados.get("pdf"),
+        "ts":            datetime.now(_BRT).isoformat(timespec="seconds"),
+    }
+    log.info(f"Inventário finalizado — PDF: {dados.get('pdf')}")
+    return jsonify({"ok": True})
+
+
 @app.get("/api/inventario/pending")
 def api_inventario_pending():
     """Retorna e limpa comandos pendentes para execução local (chamado pelo auto-update)."""
-    global _pending_abrir
+    global _pending_abrir, _pending_finalizar
+    resp = {"abrir_inventario": False, "finalizar_inventario": False}
     if _pending_abrir:
-        ts = _pending_abrir
+        resp["abrir_inventario"] = True
+        resp["ts_abrir"] = _pending_abrir
         _pending_abrir = None
-        return jsonify({"abrir_inventario": True, "ts": ts})
-    return jsonify({"abrir_inventario": False})
+    if _pending_finalizar:
+        resp["finalizar_inventario"] = True
+        resp["ts_finalizar"] = _pending_finalizar
+        _pending_finalizar = None
+    return jsonify(resp)
 
 
 @app.get("/api/config-check")

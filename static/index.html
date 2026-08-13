@@ -104,7 +104,12 @@ main{padding:20px 24px 40px;max-width:1600px;margin:0 auto}
 .btn-primary:hover{background:var(--blue-dark)}
 .btn-outline{background:#fff;color:var(--blue);border-color:var(--blue-light)}
 .btn-outline:hover{background:var(--bg)}
+.btn-success{background:#22C55E;color:#fff;border-color:#22C55E}
+.btn-success:hover{background:#16A34A}
+.btn-danger{background:#EF4444;color:#fff;border-color:#EF4444}
+.btn-danger:hover{background:#DC2626}
 .btn-sm{padding:5px 10px;font-size:11px}
+button:disabled{opacity:.5;cursor:not-allowed}
 
 /* filtro de data */
 .date-filter{display:flex;align-items:center;gap:8px}
@@ -599,6 +604,8 @@ main{padding:20px 24px 40px;max-width:1600px;margin:0 auto}
     <div class="panel-title">Inventário Físico — BURN RJ <span class="tag" id="invPrefixoTag">—</span></div>
     <div class="panel-actions">
       <button class="btn btn-primary btn-sm" id="btnAbrirInv" onclick="abrirInventario()">▶ Abrir Inventário</button>
+      <button class="btn btn-success btn-sm" id="btnFinalizarInv" onclick="finalizarInventario()">✔ Finalizar Inventário</button>
+      <button class="btn btn-danger btn-sm" id="btnCancelarInv" onclick="cancelarInventario()">✕ Cancelar</button>
       <button class="btn btn-outline btn-sm" onclick="carregarInventario()">↺ Atualizar</button>
       <button class="btn btn-outline btn-sm" onclick="exportarInventarioExcel()">📥 Excel</button>
       <button class="btn btn-outline btn-sm" onclick="exportarInventarioPDF()">📄 PDF</button>
@@ -1422,6 +1429,48 @@ const INV_STATUS_COLORS = {
   C2_OK:"#10B981", AGUARDA_C3:"#F97316", CONCLUIDO:"#6B7280",
   DIVERGENCIA_WMS:"#DC2626"
 };
+
+async function cancelarInventario(){
+  if (!confirm("Confirma o CANCELAMENTO do inventário?\n\nTodos os dados do portal serão apagados e ele voltará ao estado inicial.\nOs dados locais (Excel, JSONs) não serão alterados.")) return;
+  const btn = document.getElementById("btnCancelarInv");
+  btn.disabled = true;
+  try {
+    const r = await fetch("/api/inventario/cancelar", {method:"POST"});
+    const d = await r.json();
+    if (d.ok) {
+      toast("Inventário cancelado. Portal resetado.", "success");
+      setTimeout(() => carregarInventario(), 1500);
+    } else {
+      toast("Erro: " + (d.msg || "resposta inválida"), "error");
+    }
+  } catch(e) {
+    toast("Erro de conexão: " + e.message, "error");
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function finalizarInventario(){
+  if (!confirm("Confirma a FINALIZAÇÃO do inventário?\n\nSerá gerado um relatório PDF com todos os dados\ne enviado por email para carlos.tatagiba@burnind.com.br.")) return;
+  const btn = document.getElementById("btnFinalizarInv");
+  btn.disabled = true;
+  btn.textContent = "Gerando relatório…";
+  try {
+    const r = await fetch("/api/inventario/finalizar_total", {method:"POST"});
+    const d = await r.json();
+    if (d.ok) {
+      toast("Relatório será gerado e enviado por email em ~1 min", "success");
+      btn.textContent = "✔ Aguardando geração…";
+      setTimeout(() => { btn.disabled = false; btn.textContent = "✔ Finalizar Inventário"; }, 90000);
+    } else {
+      toast("Erro: " + (d.msg || "resposta inválida"), "error");
+      btn.disabled = false; btn.textContent = "✔ Finalizar Inventário";
+    }
+  } catch(e) {
+    toast("Erro de conexão: " + e.message, "error");
+    btn.disabled = false; btn.textContent = "✔ Finalizar Inventário";
+  }
+}
 
 async function abrirInventario(){
   const btn = document.getElementById("btnAbrirInv");
