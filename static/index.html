@@ -754,6 +754,7 @@ button:disabled{opacity:.5;cursor:not-allowed}
           <option value="">Todos os status</option>
           <option>PENDENTE</option><option>C1_OK</option><option>AGUARDA_C2</option>
           <option>C2_OK</option><option>AGUARDA_C3</option><option>CONCLUIDO</option>
+          <option>DIVERGENCIA_WMS</option><option>SOBRA_WMS_OK</option>
         </select>
         <span id="pkErpTotal" style="font-size:11px;color:var(--muted);margin-left:auto"></span>
       </div>
@@ -1656,11 +1657,12 @@ function renderInventario(silencioso=false){
   if (pd) {
     const itens    = pd.itens || [];
     const total    = itens.length;
-    const itensErp = itens.filter(i => i.status !== "DIVERGENCIA_WMS");
-    const divWms   = itens.filter(i => i.status === "DIVERGENCIA_WMS" && i.c1 != null).length;
+    const _isWmsExtra = s => s === "DIVERGENCIA_WMS" || s === "SOBRA_WMS_OK";
+    const itensErp = itens.filter(i => !_isWmsExtra(i.status));
+    const divWms   = itens.filter(i => _isWmsExtra(i.status) && i.c1 != null).length;
     const contados = itensErp.filter(i => i.c1 !== null && i.c1 !== undefined).length + divWms;
     const c1_ok    = itensErp.filter(i => i.status === "C1_OK").length;
-    const concl    = itens.filter(i => ["C1_OK","C2_OK","CONCLUIDO"].includes(i.status)).length;
+    const concl    = itens.filter(i => ["C1_OK","C2_OK","CONCLUIDO","SOBRA_WMS_OK"].includes(i.status)).length;
     const pend     = itens.filter(i => i.status === "PENDENTE").length;
     const em_c2    = itens.filter(i => i.status === "AGUARDA_C2").length;
     const em_c3    = itens.filter(i => i.status === "AGUARDA_C3").length;
@@ -2132,7 +2134,8 @@ function _invStatusStyle(s){
     C2_OK:          ["#2980B9","C2 OK"],
     AGUARDA_C3:     ["#E67E22","Aguarda C3"],
     CONCLUIDO:      ["#1ABC9C","Concluído"],
-    DIVERGENCIA_WMS:["#DC2626","Sobra WMS"],
+    DIVERGENCIA_WMS: ["#DC2626","Sobra WMS"],
+    SOBRA_WMS_OK:    ["#0891B2","Sobra WMS OK"],
   };
   return m[s] || ["#999","?"];
 }

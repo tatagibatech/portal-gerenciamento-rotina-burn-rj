@@ -933,9 +933,10 @@ def lista_contagem(nivel):
     agora    = datetime.now(_BRT).strftime("%d/%m/%Y %H:%M")
 
     if nivel == 2:
+        # C2: divergências normais + Sobras WMS ainda não confirmadas + itens pendentes
         itens_div = [i for i in itens if i.get("status") in {"AGUARDA_C2", "DIVERGENCIA_WMS", "PENDENTE"}]
     else:
-        # C3: itens aguardando C3 + Sobras WMS que já foram recontadas em C2
+        # C3: aguardando C3 + Sobras WMS recontadas em C2 mas ainda com divergência entre C1/C2
         itens_div = [i for i in itens if i.get("status") == "AGUARDA_C3"
                      or (i.get("status") == "DIVERGENCIA_WMS" and i.get("c2") is not None)]
 
