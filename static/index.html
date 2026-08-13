@@ -598,6 +598,7 @@ main{padding:20px 24px 40px;max-width:1600px;margin:0 auto}
   <div class="panel-header">
     <div class="panel-title">Inventário Físico — BURN RJ <span class="tag" id="invPrefixoTag">—</span></div>
     <div class="panel-actions">
+      <button class="btn btn-primary btn-sm" id="btnAbrirInv" onclick="abrirInventario()">▶ Abrir Inventário</button>
       <button class="btn btn-outline btn-sm" onclick="carregarInventario()">↺ Atualizar</button>
       <button class="btn btn-outline btn-sm" onclick="exportarInventarioExcel()">📥 Excel</button>
       <button class="btn btn-outline btn-sm" onclick="exportarInventarioPDF()">📄 PDF</button>
@@ -1421,6 +1422,28 @@ const INV_STATUS_COLORS = {
   C2_OK:"#10B981", AGUARDA_C3:"#F97316", CONCLUIDO:"#6B7280",
   DIVERGENCIA_WMS:"#DC2626"
 };
+
+async function abrirInventario(){
+  const btn = document.getElementById("btnAbrirInv");
+  if (!confirm("Confirma abertura do inventário?\n\nIsso irá carregar a base ERP e criar as ASNs de C1 no WMS.")) return;
+  btn.disabled = true;
+  btn.textContent = "Aguardando…";
+  try {
+    const r = await fetch("/api/inventario/abrir", {method:"POST"});
+    const d = await r.json();
+    if (d.ok) {
+      toast("Inventário será aberto na próxima atualização (~1 min)", "success");
+      btn.textContent = "▶ Aguardando execução…";
+      setTimeout(() => { btn.disabled = false; btn.textContent = "▶ Abrir Inventário"; }, 90000);
+    } else {
+      toast("Erro: " + (d.msg || "resposta inválida"), "error");
+      btn.disabled = false; btn.textContent = "▶ Abrir Inventário";
+    }
+  } catch(e) {
+    toast("Erro de conexão: " + e.message, "error");
+    btn.disabled = false; btn.textContent = "▶ Abrir Inventário";
+  }
+}
 
 async function carregarInventario(silencioso=false){
   try {

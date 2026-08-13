@@ -405,6 +405,7 @@ def api_webhook_asn():
 _inventario_dados = {}  # dados em memória — recarregados via POST /api/inventario/dados
 _painel_dados     = {}  # dados do painel ERP×WMS — recarregados via POST /api/inventario/painel
 _finalizacoes     = {}  # registros de finalização por nível — POST /api/inventario/finalizar
+_pending_abrir    = None  # timestamp do comando "abrir inventário" aguardando execução local
 
 
 @app.post("/api/inventario/dados")
@@ -484,6 +485,30 @@ def api_finalizar():
 def api_finalizacoes():
     """Retorna todos os registros de finalização."""
     return jsonify(_finalizacoes)
+
+
+@app.post("/api/inventario/abrir")
+def api_abrir_inventario():
+    """Sinaliza ao script local para carregar a base ERP e criar as ASNs de C1."""
+    global _pending_abrir
+    _pending_abrir = datetime.now(_BRT).isoformat(timespec="seconds")
+    log.info("Comando 'abrir inventário' recebido — aguardando execução local.")
+    return jsonify({
+        "ok":  True,
+        "msg": "Comando recebido. O inventário será aberto na próxima atualização (~1 min).",
+        "ts":  _pending_abrir,
+    })
+
+
+@app.get("/api/inventario/pending")
+def api_inventario_pending():
+    """Retorna e limpa comandos pendentes para execução local (chamado pelo auto-update)."""
+    global _pending_abrir
+    if _pending_abrir:
+        ts = _pending_abrir
+        _pending_abrir = None
+        return jsonify({"abrir_inventario": True, "ts": ts})
+    return jsonify({"abrir_inventario": False})
 
 
 @app.get("/api/config-check")
