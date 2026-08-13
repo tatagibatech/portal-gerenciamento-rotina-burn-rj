@@ -793,9 +793,10 @@ button:disabled{opacity:.5;cursor:not-allowed}
       <div class="cnt-quadro">
         <div class="cnt-quadro-hdr c2" style="display:flex;align-items:center;justify-content:space-between">
           <span>Contagem C2</span>
-          <div style="display:flex;align-items:center;gap:10px">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
             <span id="pkWmsTotal2" class="cnt-quadro-tot"></span>
             <button class="btn btn-outline btn-sm" style="font-size:11px" onclick="abrirListaContagem(2)">🖨 Lista C2</button>
+            <div id="btnsFinalizeC2" style="display:flex;gap:6px;flex-wrap:wrap"></div>
           </div>
         </div>
         <div style="overflow-x:auto">
@@ -811,9 +812,10 @@ button:disabled{opacity:.5;cursor:not-allowed}
       <div class="cnt-quadro">
         <div class="cnt-quadro-hdr c3" style="display:flex;align-items:center;justify-content:space-between">
           <span>Contagem C3</span>
-          <div style="display:flex;align-items:center;gap:10px">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
             <span id="pkWmsTotal3" class="cnt-quadro-tot"></span>
             <button class="btn btn-outline btn-sm" style="font-size:11px" onclick="abrirListaContagem(3)">🖨 Lista C3</button>
+            <div id="btnsFinalizeC3" style="display:flex;gap:6px;flex-wrap:wrap"></div>
           </div>
         </div>
         <div style="overflow-x:auto">
@@ -1820,7 +1822,7 @@ function renderVisaoGeral(){
 
       const niveisHtml = [1, 2, 3].map(n => {
         const asnOk = niveis.has(n);
-        const finN  = !!_finalizacoes[String(n)];
+        const finN  = !!(_finalizacoes[`${n}_${arm}`] || _finalizacoes[String(n)]);
         const isAt  = nivelAt === n;
 
         // C2 e C3 só aparecem quando a ASN do nível foi criada
@@ -1870,7 +1872,8 @@ function _nivelAtivo(arm, asnCriados, finalizacoes){
   const niveis = asnCriados[arm] || new Set();
   for (let n = 1; n <= 3; n++){
     if (!niveis.has(n)) return null;
-    if (!finalizacoes[String(n)]) return n;
+    const fin = finalizacoes[`${n}_${arm}`] || finalizacoes[String(n)];
+    if (!fin) return n;
   }
   return null;
 }
@@ -2074,6 +2077,19 @@ function renderContagensWms(){
       <button class="pag-btn${_pkWmsPags[n]===1?' disabled':''}" onclick="_pkWmsMudaPag(${n},${_pkWmsPags[n]-1})">‹ Ant</button>
       <button class="pag-btn active">${_pkWmsPags[n]}/${tot}</button>
       <button class="pag-btn${_pkWmsPags[n]>=tot?' disabled':''}" onclick="_pkWmsMudaPag(${n},${_pkWmsPags[n]+1})">Prox ›</button>`;
+
+    // Botões Finalizar nos quadros C2 e C3
+    if (n >= 2) {
+      const divBtns = document.getElementById(`btnsFinalizeC${n}`);
+      if (divBtns) {
+        const armsNivel = [...new Set(todas.filter(l => (l.nivel||1) === n).map(l => l.arm || l.armazem).filter(Boolean))];
+        divBtns.innerHTML = armsNivel.map(arm => {
+          const fin = !!(_finalizacoes[`${n}_${arm}`] || _finalizacoes[String(n)]);
+          if (fin) return `<span style="font-size:11px;color:rgba(255,255,255,0.7)">✔ ${arm} finalizado</span>`;
+          return `<button class="btn btn-outline btn-sm" style="font-size:11px;border-color:#fff;color:#fff" onclick="finalizarContagem('${arm}',${n})">✔ Finalizar C${n} ${arm}</button>`;
+        }).join("");
+      }
+    }
   });
 }
 
