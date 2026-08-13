@@ -707,6 +707,10 @@ button:disabled{opacity:.5;cursor:not-allowed}
 
   <!-- ── ABA: ARMAZÉNS ── -->
   <div id="inv-tab-armazens" class="inv-tab-content hidden">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+      <button class="btn btn-outline btn-sm" onclick="exportarEnderecosExcel()">📥 Excel Endereços (Lidos / Não Lidos)</button>
+      <div id="btnsFinalizarArmazens" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+    </div>
     <div id="invArmazensCards"></div>
   </div>
 
@@ -1925,6 +1929,25 @@ function renderArmazens(){
   const pd   = _painelDados;
   const inv  = _invDados;
 
+  // Botões Finalizar por armazém (nível ativo)
+  const divBtnsArm = document.getElementById("btnsFinalizarArmazens");
+  if (divBtnsArm && pd) {
+    const asnCriados = {};
+    for (const a of (pd.asns_criados || [])) {
+      if (!(a.ok || a.status === "OK")) continue;
+      const arm = a.armazem || (a.receiptkey || "").split("_")[2] || "";
+      if (!arm) continue;
+      if (!asnCriados[arm]) asnCriados[arm] = new Set();
+      asnCriados[arm].add(a.nivel);
+    }
+    const arms = Object.keys(pd.prog_arm || {}).sort();
+    divBtnsArm.innerHTML = arms.map(arm => {
+      const n = _nivelAtivo(arm, asnCriados, _finalizacoes);
+      if (!n) return "";
+      return `<button class="btn btn-primary btn-sm" onclick="finalizarContagem('${arm}',${n})">✔ Finalizar C${n} ${arm}</button>`;
+    }).join("");
+  }
+
   if (pd && pd.prog_arm && Object.keys(pd.prog_arm).length) {
     cont.innerHTML = Object.entries(pd.prog_arm).sort(([a],[b])=>a.localeCompare(b)).map(([arm,p]) => {
       const pct  = p.pct || 0;
@@ -2092,6 +2115,22 @@ function renderContagensWms(){
     const elTot = document.getElementById(`pkWmsTotal${n}`);
     if (elTot) elTot.textContent = `${linhas.length} linha(s)`;
 
+    // Botões Finalizar C2 e C3 — sempre visíveis se ASN foi criada, mesmo sem linhas
+    if (n >= 2) {
+      const divBtns = document.getElementById(`btnsFinalizeC${n}`);
+      if (divBtns) {
+        const armsComAsn = (pd.asns_criados || [])
+          .filter(a => (a.ok || a.status === "OK") && a.nivel === n)
+          .map(a => a.armazem || (a.receiptkey || "").split("_")[2])
+          .filter(Boolean);
+        divBtns.innerHTML = armsComAsn.map(arm => {
+          const fin = !!(_finalizacoes[`${n}_${arm}`] || _finalizacoes[String(n)]);
+          if (fin) return `<span style="font-size:11px;color:rgba(255,255,255,0.7)">✔ ${arm} finalizado</span>`;
+          return `<button class="btn btn-outline btn-sm" style="font-size:11px;border-color:#fff;color:#fff" onclick="finalizarContagem('${arm}',${n})">✔ Finalizar C${n} ${arm}</button>`;
+        }).join("");
+      }
+    }
+
     const pag = document.getElementById(`pkWmsPag${n}`);
     if (!pag) return;
     if (!linhas.length) { pag.innerHTML = ""; return; }
@@ -2099,19 +2138,6 @@ function renderContagensWms(){
       <button class="pag-btn${_pkWmsPags[n]===1?' disabled':''}" onclick="_pkWmsMudaPag(${n},${_pkWmsPags[n]-1})">‹ Ant</button>
       <button class="pag-btn active">${_pkWmsPags[n]}/${tot}</button>
       <button class="pag-btn${_pkWmsPags[n]>=tot?' disabled':''}" onclick="_pkWmsMudaPag(${n},${_pkWmsPags[n]+1})">Prox ›</button>`;
-
-    // Botões Finalizar nos quadros C2 e C3
-    if (n >= 2) {
-      const divBtns = document.getElementById(`btnsFinalizeC${n}`);
-      if (divBtns) {
-        const armsNivel = [...new Set(todas.filter(l => (l.nivel||1) === n).map(l => l.arm || l.armazem).filter(Boolean))];
-        divBtns.innerHTML = armsNivel.map(arm => {
-          const fin = !!(_finalizacoes[`${n}_${arm}`] || _finalizacoes[String(n)]);
-          if (fin) return `<span style="font-size:11px;color:rgba(255,255,255,0.7)">✔ ${arm} finalizado</span>`;
-          return `<button class="btn btn-outline btn-sm" style="font-size:11px;border-color:#fff;color:#fff" onclick="finalizarContagem('${arm}',${n})">✔ Finalizar C${n} ${arm}</button>`;
-        }).join("");
-      }
-    }
   });
 }
 
