@@ -2014,7 +2014,7 @@ function exportarInventarioPDF(){
 /* ══════════════════════════════════════════════════════════════
    HELPERS
 ══════════════════════════════════════════════════════════════ */
-function _fmt(n){ return Number(n||0).toLocaleString("pt-BR",{minimumFractionDigits:0,maximumFractionDigits:2}); }
+function _fmt(n, dec=2){ return Number(n||0).toLocaleString("pt-BR",{minimumFractionDigits:0,maximumFractionDigits:dec}); }
 function _hoje(){ const n=new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`; }
 function _download(content, filename, type){
   const a = document.createElement("a");
