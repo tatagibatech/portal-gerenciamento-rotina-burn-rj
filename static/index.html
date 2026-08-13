@@ -1458,6 +1458,7 @@ function renderSemDados(){
 }
 
 function renderInventario(){
+  const _scrollY = window.scrollY;
   const pd  = _painelDados;
   const inv = _invDados;
 
@@ -1503,6 +1504,7 @@ function renderInventario(){
   renderArmazens();
   renderContagensPainel();
   renderDivergencias();
+  requestAnimationFrame(() => window.scrollTo({ top: _scrollY, behavior: "instant" }));
 }
 
 function setInvTab(id){
