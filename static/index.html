@@ -1464,6 +1464,8 @@ async function cancelarInventario(){
     const d = await r.json();
     if (d.ok) {
       toast("Inventário cancelado. Portal resetado.", "success");
+      document.getElementById("invPrefixoTag").textContent = "—";
+      document.getElementById("invDescricaoData").textContent = "—";
       setTimeout(() => carregarInventario(), 1500);
     } else {
       toast("Erro: " + (d.msg || "resposta inválida"), "error");
@@ -1485,6 +1487,8 @@ async function finalizarInventario(){
     const d = await r.json();
     if (d.ok) {
       toast("Relatório será gerado e enviado por email em ~1 min", "success");
+      document.getElementById("invPrefixoTag").textContent = "—";
+      document.getElementById("invDescricaoData").textContent = "—";
       btn.textContent = "✔ Aguardando geração…";
       setTimeout(() => { btn.disabled = false; btn.textContent = "✔ Finalizar Inventário"; }, 90000);
     } else {
