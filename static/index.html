@@ -1795,12 +1795,16 @@ function renderBaseErp(){
   const tbody = document.getElementById("tblBaseErpBody");
   tbody.innerHTML = page.map(it => {
     const [cor, lbl] = _invStatusStyle(it.status);
-    const dv  = it.div_qty != null ? (it.div_qty > 0 ? "+" : "") + _fmt(it.div_qty) : "—";
-    const dvv = it.div_val != null ? (it.div_val > 0 ? "+" : "") + "R$ " + _fmt(Math.abs(it.div_val)) : "—";
-    const dvCor = it.div_qty == null ? "" : it.div_qty > 0 ? "color:#22C55E" : it.div_qty < 0 ? "color:#EF4444" : "color:var(--muted)";
+    // Arredonda div_qty para evitar floating point (ex: 0.0040000000000000036 → 0.004)
+    const divQty = it.div_qty != null ? Math.round(it.div_qty * 100000) / 100000 : null;
+    const dv  = divQty != null ? (divQty > 0 ? "+" : "") + _fmt(divQty) : "—";
+    const dvv = it.div_val != null ? (it.div_val > 0 ? "+" : "") + "R$ " + _fmt(Math.abs(Math.round(it.div_val * 100) / 100)) : "—";
+    const dvCor = divQty == null ? "" : divQty > 0 ? "color:#22C55E" : divQty < 0 ? "color:#EF4444" : "color:var(--muted)";
+    // Depósito: usa armazem_wms quando disponível, senão deposito_nome
+    const depNome = it.armazem_wms || it.deposito_nome || it.deposito || "—";
     return `<tr>
       <td><strong>${it.sku}</strong></td>
-      <td>${it.deposito_nome||it.deposito||"—"}</td>
+      <td>${depNome}</td>
       <td class="td-qty">${_fmt(it.qty_erp)}</td>
       <td class="td-qty">${_fmt(it.qty_reservado)}</td>
       <td class="td-qty">${it.preco_unit != null ? "R$ "+_fmt(it.preco_unit) : "—"}</td>
