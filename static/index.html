@@ -603,7 +603,10 @@ button:disabled{opacity:.5;cursor:not-allowed}
 
   <!-- toolbar inventário -->
   <div class="panel-header">
-    <div class="panel-title">Inventário Físico — BURN RJ <span class="tag" id="invPrefixoTag">—</span></div>
+    <div>
+      <div class="panel-title">Inventário Físico — BURN RJ <span class="tag" id="invPrefixoTag">—</span></div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">Inventário Geral Burn &nbsp;·&nbsp; <span id="invDescricaoData">—</span></div>
+    </div>
     <div class="panel-actions">
       <button class="btn btn-primary btn-sm" id="btnAbrirInv" onclick="abrirInventario()">▶ Abrir Inventário</button>
       <button class="btn btn-success btn-sm" id="btnFinalizarInv" onclick="finalizarInventario()">✔ Finalizar Inventário</button>
@@ -1559,6 +1562,9 @@ function renderInventario(silencioso=false){
 
   const prefixo = (pd&&pd.prefixo) || (inv&&inv.prefixo) || "—";
   document.getElementById("invPrefixoTag").textContent = prefixo;
+  // Extrai data do prefixo (formato YYYYMMDD_...) e formata como DD/MM/YYYY
+  const _dm = prefixo.match(/^(\d{4})(\d{2})(\d{2})/);
+  document.getElementById("invDescricaoData").textContent = _dm ? `${_dm[3]}/${_dm[2]}/${_dm[1]}` : "—";
   document.getElementById("invGeradoEm").textContent =
     (pd&&pd.recebido_em) || (inv&&inv.recebido_em) || (inv&&inv.gerado_em) || "—";
 
