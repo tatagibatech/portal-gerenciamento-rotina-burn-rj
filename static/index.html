@@ -1661,7 +1661,11 @@ function _renderAsnCards(containerId, asns){
 }
 
 function imprimirEtiquetaAsn(receiptkey, nivel){
-  window.open("/etiqueta/" + encodeURIComponent(receiptkey), "_blank");
+  // Se estamos no Render (nuvem), abre pelo servidor local onde a Zebra está conectada
+  const base = (location.hostname.includes('onrender.com') || location.hostname.includes('render.com'))
+    ? 'http://10.10.28.76:5002'
+    : '';
+  window.open(base + "/etiqueta/" + encodeURIComponent(receiptkey), "_blank");
 }
 
 function _renderArmBars(containerId, progArm){
