@@ -70,15 +70,26 @@ def index():
 
 @app.route("/etiqueta/<receiptkey>")
 def etiqueta(receiptkey: str):
-    """Gera etiqueta de impressão com código de barras Code 128 para uma ASN."""
+    """Gera etiqueta 95×90mm com QR code embutido (sem CDN)."""
+    import io, base64
+    import qrcode as _qr
     from markupsafe import escape
     rk = str(escape(receiptkey))
-    # Extrai armazém e nível do receiptkey: PREFIXO_ARM_CONTAGEMn
     parts = rk.split("_CONTAGEM")
     nivel_str = parts[1] if len(parts) > 1 else "?"
     arm = parts[0].split("_")[-1] if parts else "?"
+    arm_display = (arm[:4] + " - " + arm[4:]) if len(arm) > 4 else arm
     from datetime import datetime as _dt
     agora = _dt.now().strftime("%d/%m/%Y %H:%M")
+
+    # Gera QR code como PNG base64
+    qr = _qr.QRCode(error_correction=_qr.constants.ERROR_CORRECT_M, box_size=5, border=2)
+    qr.add_data(receiptkey)
+    qr.make(fit=True)
+    buf = io.BytesIO()
+    qr.make_image(fill_color="black", back_color="white").save(buf, format="PNG")
+    qr_b64 = base64.b64encode(buf.getvalue()).decode()
+
     html = f"""<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -86,56 +97,56 @@ def etiqueta(receiptkey: str):
 <title>Etiqueta — {rk}</title>
 <style>
   *{{box-sizing:border-box;margin:0;padding:0}}
-  body{{font-family:'Segoe UI',Arial,sans-serif;background:#f0f4ff;padding:20px;
-        display:flex;flex-direction:column;align-items:center}}
-  .controls{{background:#1A5276;color:#fff;padding:12px 20px;border-radius:8px;
-    margin-bottom:20px;display:flex;align-items:center;gap:16px;width:100%;max-width:420px}}
-  .controls span{{flex:1;font-size:13px}}
-  .btn-p{{background:#fff;color:#1A5276;border:none;padding:7px 18px;border-radius:6px;
-    font-weight:700;font-size:13px;cursor:pointer}}
+  body{{font-family:'Segoe UI',Arial,sans-serif;background:#e8eef7;
+        display:flex;flex-direction:column;align-items:center;padding:16px}}
+  .controls{{background:#1A5276;color:#fff;padding:8px 14px;border-radius:8px;
+    margin-bottom:14px;display:flex;align-items:center;gap:10px;width:95mm}}
+  .controls span{{flex:1;font-size:11px}}
+  .btn-p{{background:#fff;color:#1A5276;border:none;padding:5px 14px;border-radius:6px;
+    font-weight:700;font-size:12px;cursor:pointer}}
   .btn-p:hover{{background:#d6eaf8}}
-  .label{{width:100%;max-width:400px;background:#fff;border:2px solid #17202a;
-    border-radius:4px;padding:16px;display:flex;flex-direction:column;gap:0}}
-  .logo-txt{{font-size:24px;font-weight:900;color:#1A5276;letter-spacing:2px;text-align:center}}
-  .sep{{height:2px;background:#17202a;margin:8px 0;border-radius:1px}}
-  .sub{{text-align:center;font-size:10px;font-weight:600;color:#5D6D7E;letter-spacing:1px;
-    text-transform:uppercase;padding:2px 0 6px}}
-  .arm{{text-align:center;font-size:38px;font-weight:900;color:#1A5276;letter-spacing:3px;
-    padding:10px 0;background:#EBF5FB;border-radius:4px;margin:4px 0}}
-  .doc-lbl{{font-size:10px;color:#5D6D7E;text-transform:uppercase;letter-spacing:1px;margin-top:4px}}
-  .doc{{font-family:'Courier New',monospace;font-size:13px;font-weight:700;color:#17202a;
-    word-break:break-all;line-height:1.45;padding:4px 0 6px}}
-  .bc-wrap{{display:flex;justify-content:center;padding:12px 0}}
-  svg.bc{{max-width:340px;width:100%}}
-  .footer{{text-align:center;font-size:10px;color:#5D6D7E;padding-top:6px;
-    border-top:1px solid #d5d8dc;margin-top:4px}}
+  .label{{width:95mm;height:90mm;background:#fff;border:1.5px solid #17202a;
+    display:flex;flex-direction:column;padding:3mm;overflow:hidden}}
+  .logo-txt{{text-align:center;font-size:6mm;font-weight:900;color:#1A5276;
+    letter-spacing:2px;line-height:1;padding-bottom:1.5mm;flex-shrink:0}}
+  .sep{{height:0.5mm;background:#17202a;flex-shrink:0}}
+  .arm{{text-align:center;font-size:7.5mm;font-weight:900;color:#17202a;
+    letter-spacing:2px;padding:1mm 0 0;line-height:1.1;flex-shrink:0}}
+  .contagem{{text-align:center;font-size:5mm;font-weight:700;color:#17202a;
+    letter-spacing:2px;padding:0.5mm 0 1mm;line-height:1;flex-shrink:0}}
+  .banda{{background:#17202a;color:#fff;text-align:center;font-size:3.5mm;
+    font-weight:700;letter-spacing:2px;padding:1mm 0;margin:1mm 0;flex-shrink:0}}
+  .qr-wrap{{flex:1;min-height:0;display:flex;justify-content:center;
+    align-items:center;overflow:hidden}}
+  .qr-wrap img{{display:block;max-height:38mm;max-width:38mm;width:auto;height:auto;
+    image-rendering:pixelated}}
+  .doc{{text-align:center;font-size:3.5mm;font-weight:700;color:#17202a;
+    font-family:'Courier New',monospace;letter-spacing:0.3mm;padding:1mm 0 0;
+    word-break:break-all;line-height:1.2;flex-shrink:0}}
+  .dt{{text-align:center;font-size:2.2mm;color:#5D6D7E;padding-top:0.8mm;flex-shrink:0}}
+  @page{{size:95mm 90mm;margin:0}}
   @media print{{body{{background:#fff;padding:0}}.controls{{display:none}}
-    .label{{border:2px solid #000;max-width:100%}}}}
+    .label{{border:none;width:95mm;height:90mm}}}}
 </style>
 </head>
 <body>
   <div class="controls">
-    <span>Etiqueta C{nivel_str} — {arm}</span>
+    <span>C{nivel_str} — {arm_display} &nbsp;|&nbsp; {agora}</span>
     <button class="btn-p" onclick="window.print()">&#128424; Imprimir</button>
   </div>
   <div class="label">
     <div class="logo-txt">LIMPPANO</div>
     <div class="sep"></div>
-    <div class="sub">INVENTÁRIO BURN RJ</div>
-    <div class="arm">{arm}</div>
+    <div class="arm">{arm_display}</div>
+    <div class="contagem">CONTAGEM {nivel_str}</div>
     <div class="sep"></div>
-    <div class="doc-lbl">Documento</div>
-    <div class="doc">{rk}</div>
-    <div class="sep"></div>
-    <div class="bc-wrap">
-      <svg class="bc" jsbarcode-value="{rk}" jsbarcode-format="CODE128"
-           jsbarcode-width="2.2" jsbarcode-height="70"
-           jsbarcode-fontsize="11" jsbarcode-margin="8"></svg>
+    <div class="banda">INVENTÁRIO</div>
+    <div class="qr-wrap">
+      <img src="data:image/png;base64,{qr_b64}" alt="QR Code">
     </div>
-    <div class="footer">Contagem {nivel_str} &nbsp;|&nbsp; {agora}</div>
+    <div class="doc">{rk}</div>
+    <div class="dt">{agora}</div>
   </div>
-  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
-  <script>JsBarcode(document.querySelector('.bc'),"{rk}",{{format:"CODE128",width:2.2,height:70,fontSize:11,margin:8,displayValue:true}});</script>
 </body>
 </html>"""
     from flask import Response
