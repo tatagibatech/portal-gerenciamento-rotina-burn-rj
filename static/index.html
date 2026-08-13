@@ -1661,63 +1661,7 @@ function _renderAsnCards(containerId, asns){
 }
 
 function imprimirEtiquetaAsn(receiptkey, nivel){
-  const arm = receiptkey.split("_CONTAGEM")[0].split("_").slice(-1)[0] || "—";
-  const agora = new Date().toLocaleString("pt-BR");
-  const win = window.open("","_blank");
-  win.document.write(`<!DOCTYPE html><html><head>
-  <meta charset="UTF-8"><title>Etiqueta — ${receiptkey}</title>
-  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"><\/script>
-  <style>
-    *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:'Segoe UI',Arial,sans-serif;background:#f0f4ff;padding:20px;display:flex;flex-direction:column;align-items:center}
-    .controls{background:#1A5276;color:#fff;padding:12px 20px;border-radius:8px;margin-bottom:20px;
-      display:flex;align-items:center;gap:16px;width:100%;max-width:420px}
-    .controls span{flex:1;font-size:13px}
-    .btn-p{background:#fff;color:#1A5276;border:none;padding:7px 18px;border-radius:6px;
-      font-weight:700;font-size:13px;cursor:pointer}
-    .btn-p:hover{background:#d6eaf8}
-    .label{width:100%;max-width:400px;background:#fff;border:2px solid #17202a;border-radius:4px;
-      padding:16px;display:flex;flex-direction:column;gap:0}
-    .hdr{text-align:center;padding-bottom:8px}
-    .logo-txt{font-size:24px;font-weight:900;color:#1A5276;letter-spacing:2px}
-    .sep{height:2px;background:#17202a;margin:8px 0;border-radius:1px}
-    .sub{text-align:center;font-size:10px;font-weight:600;color:#5D6D7E;letter-spacing:1px;text-transform:uppercase;padding:2px 0 6px}
-    .arm{text-align:center;font-size:38px;font-weight:900;color:#1A5276;letter-spacing:3px;
-      padding:10px 0;background:#EBF5FB;border-radius:4px;margin:4px 0}
-    .doc-lbl{font-size:10px;color:#5D6D7E;text-transform:uppercase;letter-spacing:1px;margin-top:4px}
-    .doc{font-family:'Courier New',monospace;font-size:13px;font-weight:700;color:#17202a;
-      word-break:break-all;line-height:1.45;padding:4px 0 6px}
-    .bc-wrap{display:flex;justify-content:center;padding:12px 0}
-    svg.bc{max-width:340px;width:100%}
-    .footer{text-align:center;font-size:10px;color:#5D6D7E;padding-top:6px;
-      border-top:1px solid #d5d8dc;margin-top:4px}
-    @media print{body{background:#fff;padding:0}.controls{display:none}
-      .label{border:2px solid #000;max-width:100%}}
-  </style>
-</head><body>
-  <div class="controls">
-    <span>Etiqueta C${nivel} — ${arm}</span>
-    <button class="btn-p" onclick="window.print()">🖨 Imprimir</button>
-  </div>
-  <div class="label">
-    <div class="hdr"><div class="logo-txt">LIMPPANO</div></div>
-    <div class="sep"></div>
-    <div class="sub">INVENTÁRIO BURN RJ</div>
-    <div class="arm">${arm}</div>
-    <div class="sep"></div>
-    <div class="doc-lbl">Documento</div>
-    <div class="doc">${receiptkey}</div>
-    <div class="sep"></div>
-    <div class="bc-wrap">
-      <svg class="bc" id="bcAsn" jsbarcode-value="${receiptkey}" jsbarcode-format="CODE128"
-           jsbarcode-width="2.2" jsbarcode-height="70" jsbarcode-fontsize="11"
-           jsbarcode-margin="8"></svg>
-    </div>
-    <div class="footer">Contagem ${nivel} &nbsp;|&nbsp; ${agora}</div>
-  </div>
-  <script>JsBarcode("#bcAsn");<\/script>
-</body></html>`);
-  win.document.close();
+  window.open("/etiqueta/" + encodeURIComponent(receiptkey), "_blank");
 }
 
 function _renderArmBars(containerId, progArm){
@@ -2118,7 +2062,7 @@ function renderDivTable(){
       <td class="td-qty">${_fmt(l.qty_erp,5)}</td>
       <td class="td-qty">${l.qty_final!=null?_fmt(l.qty_final,5):"—"}</td>
       <td class="td-qty" style="color:${cor};font-weight:700">${sinal}${_fmt(l.divergencia,5)}</td>
-      <td class="td-qty" style="color:${cor};font-weight:700">${l.divergencia<0?"- ":"+ "}R$ ${_fmt(Math.abs(l.valor_div||0))}</td>
+      <td class="td-qty" style="color:${cor};font-weight:700">${l.valor_div!=null ? (l.divergencia<0?"- ":"+ ")+"R$ "+_fmt(Math.abs(l.valor_div)) : "—"}</td>
     </tr>`;
   }).join("") ||
     '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:16px">Sem divergências registradas</td></tr>';
@@ -2137,7 +2081,7 @@ function renderDivergencias(){
         qty_final:   it.qty_final,
         divergencia: it.div_qty,
         valor_div:   it.div_val,
-        valor_abs:   Math.abs(it.div_val||0),
+        valor_abs:   it.div_val != null ? Math.abs(it.div_val) : Math.abs(it.div_qty||0),
       }));
   } else if (_invDados) {
     _divLinhas = (_invDados.linhas||[])
@@ -2145,28 +2089,36 @@ function renderDivergencias(){
       .map(l => ({...l, tipo: l.divergencia < 0 ? 'Falta' : 'Sobra', valor_abs: Math.abs(l.valor_div||0)}));
   }
 
-  // Totais consolidados
-  const totalFaltas = _divLinhas.filter(l=>l.divergencia<0).reduce((s,l)=>s+Math.abs(l.valor_div||0),0);
-  const totalSobras = _divLinhas.filter(l=>l.divergencia>0).reduce((s,l)=>s+(l.valor_div||0),0);
+  // Detecta se há preços disponíveis
+  const usaValor = _divLinhas.some(l => l.valor_div != null && l.valor_div !== 0);
+
+  // Totais consolidados (R$ se houver preço, Qtd caso contrário)
+  const totalFaltas = usaValor
+    ? _divLinhas.filter(l=>l.divergencia<0).reduce((s,l)=>s+Math.abs(l.valor_div||0),0)
+    : _divLinhas.filter(l=>l.divergencia<0).reduce((s,l)=>s+Math.abs(l.divergencia||0),0);
+  const totalSobras = usaValor
+    ? _divLinhas.filter(l=>l.divergencia>0).reduce((s,l)=>s+(l.valor_div||0),0)
+    : _divLinhas.filter(l=>l.divergencia>0).reduce((s,l)=>s+(l.divergencia||0),0);
   const resultado   = totalSobras - totalFaltas;
   const resCor      = resultado >= 0 ? '#22C55E' : '#EF4444';
   const resDesc     = resultado >= 0 ? 'Estoque acima do ERP' : 'Estoque abaixo do ERP';
+  const unid        = usaValor ? "R$" : "Qtd";
 
   // Resumo KPI cards
   document.getElementById("invDivResumo").innerHTML = `
     <div style="background:#fff;border-radius:8px;padding:14px 20px;box-shadow:var(--shadow);border-left:4px solid #EF4444;flex:1;min-width:180px">
       <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Total Faltas</div>
-      <div style="font-size:22px;font-weight:800;color:#EF4444">- R$ ${_fmt(totalFaltas)}</div>
+      <div style="font-size:22px;font-weight:800;color:#EF4444">${usaValor?"- R$ "+_fmt(totalFaltas):_fmt(totalFaltas,5)+" Qtd"}</div>
       <div style="font-size:11px;color:var(--muted);margin-top:2px">${_divLinhas.filter(l=>l.divergencia<0).length} SKU(s)</div>
     </div>
     <div style="background:#fff;border-radius:8px;padding:14px 20px;box-shadow:var(--shadow);border-left:4px solid #22C55E;flex:1;min-width:180px">
       <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Total Sobras</div>
-      <div style="font-size:22px;font-weight:800;color:#22C55E">+ R$ ${_fmt(totalSobras)}</div>
+      <div style="font-size:22px;font-weight:800;color:#22C55E">${usaValor?"+ R$ "+_fmt(totalSobras):"+"+_fmt(totalSobras,5)+" Qtd"}</div>
       <div style="font-size:11px;color:var(--muted);margin-top:2px">${_divLinhas.filter(l=>l.divergencia>0).length} SKU(s)</div>
     </div>
     <div style="background:#fff;border-radius:8px;padding:14px 20px;box-shadow:var(--shadow);border-left:4px solid ${resCor};flex:1;min-width:200px">
       <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Resultado (Sobras − Faltas)</div>
-      <div style="font-size:22px;font-weight:800;color:${resCor}">${resultado>=0?"+":"-"} R$ ${_fmt(Math.abs(resultado))}</div>
+      <div style="font-size:22px;font-weight:800;color:${resCor}">${usaValor?(resultado>=0?"+":"-")+" R$ "+_fmt(Math.abs(resultado)):(resultado>=0?"+":"")+_fmt(resultado,5)+" Qtd"}</div>
       <div style="font-size:11px;color:var(--muted);margin-top:2px">${resDesc}</div>
     </div>`;
 
@@ -2175,9 +2127,9 @@ function renderDivergencias(){
   _chartPareto = new Chart(document.getElementById("chartPareto"), {
     type: "bar",
     data:{
-      labels: ["Total Faltas","Total Sobras"],
+      labels: [`Total Faltas (${unid})`,`Total Sobras (${unid})`],
       datasets:[{
-        label:"Valor (R$)",
+        label: unid,
         data:[totalFaltas, totalSobras],
         backgroundColor:["rgba(252,165,165,.8)","rgba(134,239,172,.8)"],
         borderColor:["#EF4444","#22C55E"],
@@ -2186,8 +2138,8 @@ function renderDivergencias(){
     },
     options:{
       indexAxis:"y",
-      plugins:{legend:{display:false}, tooltip:{callbacks:{label:ctx=>"R$ "+_fmt(ctx.parsed.x)}}},
-      scales:{x:{ticks:{callback:v=>"R$ "+_fmt(v),font:{size:10}}}},
+      plugins:{legend:{display:false}, tooltip:{callbacks:{label:ctx=>(usaValor?"R$ ":"")+_fmt(ctx.parsed.x)+(usaValor?"":" Qtd")}}},
+      scales:{x:{ticks:{callback:v=>(usaValor?"R$ ":"")+_fmt(v),font:{size:10}}}},
       responsive:true, maintainAspectRatio:false
     }
   });
@@ -2199,8 +2151,13 @@ function exportarDivergenciasExcel(){
   if (!_divLinhas.length) return toast("Sem divergências para exportar.", "error");
   const sep = ";";
   const prefixo = (_painelDados&&_painelDados.prefixo)||(_invDados&&_invDados.prefixo)||"inventario";
-  const totalFaltas = _divLinhas.filter(l=>l.divergencia<0).reduce((s,l)=>s+Math.abs(l.valor_div||0),0);
-  const totalSobras = _divLinhas.filter(l=>l.divergencia>0).reduce((s,l)=>s+(l.valor_div||0),0);
+  const usaValor = _divLinhas.some(l => l.valor_div != null && l.valor_div !== 0);
+  const totalFaltas = usaValor
+    ? _divLinhas.filter(l=>l.divergencia<0).reduce((s,l)=>s+Math.abs(l.valor_div||0),0)
+    : _divLinhas.filter(l=>l.divergencia<0).reduce((s,l)=>s+Math.abs(l.divergencia||0),0);
+  const totalSobras = usaValor
+    ? _divLinhas.filter(l=>l.divergencia>0).reduce((s,l)=>s+(l.valor_div||0),0)
+    : _divLinhas.filter(l=>l.divergencia>0).reduce((s,l)=>s+(l.divergencia||0),0);
   const rows = [
     `DIVERGÊNCIAS DE INVENTÁRIO — ${prefixo}`,
     "",

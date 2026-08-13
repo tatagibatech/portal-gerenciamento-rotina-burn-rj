@@ -68,6 +68,80 @@ def index():
     return resp
 
 
+@app.route("/etiqueta/<receiptkey>")
+def etiqueta(receiptkey: str):
+    """Gera etiqueta de impressão com código de barras Code 128 para uma ASN."""
+    from markupsafe import escape
+    rk = str(escape(receiptkey))
+    # Extrai armazém e nível do receiptkey: PREFIXO_ARM_CONTAGEMn
+    parts = rk.split("_CONTAGEM")
+    nivel_str = parts[1] if len(parts) > 1 else "?"
+    arm = parts[0].split("_")[-1] if parts else "?"
+    from datetime import datetime as _dt
+    agora = _dt.now().strftime("%d/%m/%Y %H:%M")
+    html = f"""<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Etiqueta — {rk}</title>
+<style>
+  *{{box-sizing:border-box;margin:0;padding:0}}
+  body{{font-family:'Segoe UI',Arial,sans-serif;background:#f0f4ff;padding:20px;
+        display:flex;flex-direction:column;align-items:center}}
+  .controls{{background:#1A5276;color:#fff;padding:12px 20px;border-radius:8px;
+    margin-bottom:20px;display:flex;align-items:center;gap:16px;width:100%;max-width:420px}}
+  .controls span{{flex:1;font-size:13px}}
+  .btn-p{{background:#fff;color:#1A5276;border:none;padding:7px 18px;border-radius:6px;
+    font-weight:700;font-size:13px;cursor:pointer}}
+  .btn-p:hover{{background:#d6eaf8}}
+  .label{{width:100%;max-width:400px;background:#fff;border:2px solid #17202a;
+    border-radius:4px;padding:16px;display:flex;flex-direction:column;gap:0}}
+  .logo-txt{{font-size:24px;font-weight:900;color:#1A5276;letter-spacing:2px;text-align:center}}
+  .sep{{height:2px;background:#17202a;margin:8px 0;border-radius:1px}}
+  .sub{{text-align:center;font-size:10px;font-weight:600;color:#5D6D7E;letter-spacing:1px;
+    text-transform:uppercase;padding:2px 0 6px}}
+  .arm{{text-align:center;font-size:38px;font-weight:900;color:#1A5276;letter-spacing:3px;
+    padding:10px 0;background:#EBF5FB;border-radius:4px;margin:4px 0}}
+  .doc-lbl{{font-size:10px;color:#5D6D7E;text-transform:uppercase;letter-spacing:1px;margin-top:4px}}
+  .doc{{font-family:'Courier New',monospace;font-size:13px;font-weight:700;color:#17202a;
+    word-break:break-all;line-height:1.45;padding:4px 0 6px}}
+  .bc-wrap{{display:flex;justify-content:center;padding:12px 0}}
+  svg.bc{{max-width:340px;width:100%}}
+  .footer{{text-align:center;font-size:10px;color:#5D6D7E;padding-top:6px;
+    border-top:1px solid #d5d8dc;margin-top:4px}}
+  @media print{{body{{background:#fff;padding:0}}.controls{{display:none}}
+    .label{{border:2px solid #000;max-width:100%}}}}
+</style>
+</head>
+<body>
+  <div class="controls">
+    <span>Etiqueta C{nivel_str} — {arm}</span>
+    <button class="btn-p" onclick="window.print()">&#128424; Imprimir</button>
+  </div>
+  <div class="label">
+    <div class="logo-txt">LIMPPANO</div>
+    <div class="sep"></div>
+    <div class="sub">INVENTÁRIO BURN RJ</div>
+    <div class="arm">{arm}</div>
+    <div class="sep"></div>
+    <div class="doc-lbl">Documento</div>
+    <div class="doc">{rk}</div>
+    <div class="sep"></div>
+    <div class="bc-wrap">
+      <svg class="bc" jsbarcode-value="{rk}" jsbarcode-format="CODE128"
+           jsbarcode-width="2.2" jsbarcode-height="70"
+           jsbarcode-fontsize="11" jsbarcode-margin="8"></svg>
+    </div>
+    <div class="footer">Contagem {nivel_str} &nbsp;|&nbsp; {agora}</div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+  <script>JsBarcode(document.querySelector('.bc'),"{rk}",{{format:"CODE128",width:2.2,height:70,fontSize:11,margin:8,displayValue:true}});</script>
+</body>
+</html>"""
+    from flask import Response
+    return Response(html, mimetype="text/html")
+
+
 @app.get("/swagger.json")
 def swagger_json():
     """OpenAPI/Swagger definition — usado pelo ION API Gateway para registrar operações."""
