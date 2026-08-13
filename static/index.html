@@ -1564,6 +1564,13 @@ function renderSemDados(){
   document.getElementById("vgStatusLegend").innerHTML = "";
   document.getElementById("invCntAsnCards").innerHTML =
     '<div style="color:var(--muted);font-size:12px">Nenhum dado do painel. Execute <code>enviar_painel.py</code>.</div>';
+  // Resetar KPI cards
+  ["invAcuracia","invConcluidos","invPendentes","invEmC2","invEmC3"].forEach(id => {
+    const el = document.getElementById(id); if (el) { el.textContent = "—"; el.style.color = ""; }
+  });
+  // Resetar aba Divergências
+  _divLinhas = [];
+  renderDivergencias();
 }
 
 function renderInventario(silencioso=false){
