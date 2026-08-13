@@ -943,7 +943,7 @@ function _iniciarAutoRefreshInv(){
   if (_invRefreshInterval) return;
   _invRefreshInterval = setInterval(() => {
     if (!document.getElementById("page-inventario").classList.contains("hidden")) {
-      carregarInventario();
+      carregarInventario(true); // silencioso — sem overlay, sem scroll
     }
   }, 60000);
 }
@@ -1421,9 +1421,9 @@ const INV_STATUS_COLORS = {
   DIVERGENCIA_WMS:"#DC2626"
 };
 
-async function carregarInventario(){
+async function carregarInventario(silencioso=false){
   try {
-    mostrarLoading(true);
+    if (!silencioso) mostrarLoading(true);
     const [rInv, rPainel, rFin] = await Promise.all([
       fetch("/api/inventario"),
       fetch("/api/inventario/painel"),
@@ -1443,9 +1443,9 @@ async function carregarInventario(){
     }
     renderInventario();
   } catch(e) {
-    toast("Erro ao carregar inventário: " + e.message, "error");
+    if (!silencioso) toast("Erro ao carregar inventário: " + e.message, "error");
   } finally {
-    esconderLoading();
+    if (!silencioso) esconderLoading();
   }
 }
 
