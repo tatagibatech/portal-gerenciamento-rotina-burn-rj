@@ -530,6 +530,16 @@ def api_finalizar_total():
     })
 
 
+@app.post("/api/inventario/reabrir")
+def api_reabrir_inventario():
+    """Reabre o inventário finalizado — limpa apenas a finalização, mantém dados de contagem."""
+    global _inventario_final, _pending_finalizar
+    _inventario_final  = {}
+    _pending_finalizar = None
+    log.info("Inventário reaberto — finalização removida, dados de contagem mantidos.")
+    return jsonify({"ok": True, "msg": "Inventário reaberto. Dados de contagem preservados."})
+
+
 @app.post("/api/inventario/finalizado")
 def api_inventario_finalizado():
     """Recebe confirmação do script local após geração do PDF."""

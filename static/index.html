@@ -106,6 +106,8 @@ main{padding:20px 24px 40px;max-width:1600px;margin:0 auto}
 .btn-outline:hover{background:var(--bg)}
 .btn-success{background:#22C55E;color:#fff;border-color:#22C55E}
 .btn-success:hover{background:#16A34A}
+.btn-warning{background:#F59E0B;color:#fff;border-color:#F59E0B}
+.btn-warning:hover{background:#D97706}
 .btn-danger{background:#EF4444;color:#fff;border-color:#EF4444}
 .btn-danger:hover{background:#DC2626}
 .btn-sm{padding:5px 10px;font-size:11px}
@@ -605,6 +607,7 @@ button:disabled{opacity:.5;cursor:not-allowed}
     <div class="panel-actions">
       <button class="btn btn-primary btn-sm" id="btnAbrirInv" onclick="abrirInventario()">▶ Abrir Inventário</button>
       <button class="btn btn-success btn-sm" id="btnFinalizarInv" onclick="finalizarInventario()">✔ Finalizar Inventário</button>
+      <button class="btn btn-warning btn-sm" id="btnReabrirInv" onclick="reabrirInventario()">↩ Reabrir</button>
       <button class="btn btn-danger btn-sm" id="btnCancelarInv" onclick="cancelarInventario()">✕ Cancelar</button>
       <button class="btn btn-outline btn-sm" onclick="carregarInventario()">↺ Atualizar</button>
       <button class="btn btn-outline btn-sm" onclick="exportarInventarioExcel()">📥 Excel</button>
@@ -1429,6 +1432,25 @@ const INV_STATUS_COLORS = {
   C2_OK:"#10B981", AGUARDA_C3:"#F97316", CONCLUIDO:"#6B7280",
   DIVERGENCIA_WMS:"#DC2626"
 };
+
+async function reabrirInventario(){
+  if (!confirm("Confirma a reabertura do inventário?\n\nA finalização será desfeita, mas todos os dados de contagem serão mantidos.")) return;
+  const btn = document.getElementById("btnReabrirInv");
+  btn.disabled = true;
+  try {
+    const r = await fetch("/api/inventario/reabrir", {method:"POST"});
+    const d = await r.json();
+    if (d.ok) {
+      toast("Inventário reaberto. Dados de contagem preservados.", "success");
+    } else {
+      toast("Erro: " + (d.msg || "resposta inválida"), "error");
+    }
+  } catch(e) {
+    toast("Erro de conexão: " + e.message, "error");
+  } finally {
+    btn.disabled = false;
+  }
+}
 
 async function cancelarInventario(){
   if (!confirm("Confirma o CANCELAMENTO do inventário?\n\nTodos os dados do portal serão apagados e ele voltará ao estado inicial.\nOs dados locais (Excel, JSONs) não serão alterados.")) return;
