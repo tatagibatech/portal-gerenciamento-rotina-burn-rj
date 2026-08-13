@@ -1593,10 +1593,9 @@ function renderInventario(silencioso=false){
     const itensErp = itens.filter(i => i.status !== "DIVERGENCIA_WMS");
     const contados = itensErp.filter(i => i.c1 !== null && i.c1 !== undefined).length;
     const c1_ok    = itensErp.filter(i => i.status === "C1_OK").length;
-    const concl    = itens.filter(i => ["C1_OK","C2_OK","CONCLUIDO"].includes(i.status)).length;
-    const pend     = itens.filter(i => i.status === "PENDENTE").length;
-    const em_c2    = itens.filter(i => i.status === "AGUARDA_C2").length;
-    const em_c3    = itens.filter(i => i.status === "AGUARDA_C3").length;
+    const temValor = itensErp.some(i => (i.valor_erp || 0) > 0);
+    const _sumVal  = arr => arr.reduce((s,i) => s + (i.valor_erp || 0), 0);
+    const _brl     = v => "R$ " + _fmt(v, 2);
 
     const acurElem = document.getElementById("invAcuracia");
     if (contados > 0) {
@@ -1607,10 +1606,32 @@ function renderInventario(silencioso=false){
       acurElem.textContent = "—";
       acurElem.style.color = "";
     }
-    document.getElementById("invConcluidos").textContent = `${concl} / ${total}`;
-    document.getElementById("invPendentes").textContent  = pend.toLocaleString("pt-BR");
-    document.getElementById("invEmC2").textContent       = em_c2.toLocaleString("pt-BR");
-    document.getElementById("invEmC3").textContent       = em_c3.toLocaleString("pt-BR");
+
+    const iConclArr = itens.filter(i => ["C1_OK","C2_OK","CONCLUIDO"].includes(i.status));
+    const iPendArr  = itens.filter(i => i.status === "PENDENTE");
+    const iC2Arr    = itens.filter(i => i.status === "AGUARDA_C2");
+    const iC3Arr    = itens.filter(i => i.status === "AGUARDA_C3");
+
+    if (temValor) {
+      const fs = "font-size:14px";
+      document.getElementById("invConcluidos").setAttribute("style", fs);
+      document.getElementById("invConcluidos").textContent = _brl(_sumVal(iConclArr));
+      document.getElementById("lbConcluidos").textContent  = `Concluídos (${iConclArr.length}/${total})`;
+      document.getElementById("invPendentes").setAttribute("style", fs);
+      document.getElementById("invPendentes").textContent  = _brl(_sumVal(iPendArr));
+      document.getElementById("lbPendentes").textContent   = `Pendentes (${iPendArr.length})`;
+      document.getElementById("invEmC2").setAttribute("style", fs);
+      document.getElementById("invEmC2").textContent       = _brl(_sumVal(iC2Arr));
+      document.getElementById("invEmC3").setAttribute("style", fs);
+      document.getElementById("invEmC3").textContent       = _brl(_sumVal(iC3Arr));
+    } else {
+      document.getElementById("invConcluidos").textContent = `${iConclArr.length} / ${total}`;
+      document.getElementById("lbConcluidos").textContent  = "Concluídos";
+      document.getElementById("invPendentes").textContent  = iPendArr.length.toLocaleString("pt-BR");
+      document.getElementById("lbPendentes").textContent   = "Pendentes";
+      document.getElementById("invEmC2").textContent       = iC2Arr.length.toLocaleString("pt-BR");
+      document.getElementById("invEmC3").textContent       = iC3Arr.length.toLocaleString("pt-BR");
+    }
   } else if (inv) {
     const kpi = inv.kpi || {};
     document.getElementById("invAcuracia").textContent   = (kpi.acuracia_pct||0).toFixed(1) + "%";
@@ -2093,8 +2114,10 @@ function renderDivergencias(){
       .map(l => ({...l, tipo: l.divergencia < 0 ? 'Falta' : 'Sobra', valor_abs: Math.abs(l.valor_div||0)}));
   }
 
-  // Detecta se há preços disponíveis
-  const usaValor = _divLinhas.some(l => l.valor_div != null && l.valor_div !== 0);
+  // Detecta se há preços disponíveis (via divLinhas ou base ERP)
+  const temPreco = (_painelDados?.total_erp_val || 0) > 0
+    || (_painelDados?.itens || []).some(i => (i.preco_unit || 0) > 0);
+  const usaValor = temPreco || _divLinhas.some(l => l.valor_div != null && l.valor_div !== 0);
 
   // Totais consolidados (R$ se houver preço, Qtd caso contrário)
   const totalFaltas = usaValor
