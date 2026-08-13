@@ -1646,14 +1646,78 @@ function _renderAsnCards(containerId, asns){
     const ok  = r.ok;
     const cor = ok ? "#22C55E" : "#EF4444";
     const ico = ok ? "✔" : "✘";
+    const rk  = r.receiptkey || r.doc || "";
+    const n   = r.nivel || 1;
     return `<div class="inv-asn-card${ok?'':' err'}" style="border-left-color:${cor}">
       <span class="inv-asn-ico" style="color:${cor}">${ico}</span>
-      <div>
-        <div class="inv-asn-doc">${r.receiptkey||r.doc||"—"} <small style="color:var(--muted)">[C${r.nivel||1}]</small></div>
+      <div style="flex:1;min-width:0">
+        <div class="inv-asn-doc">${rk} <small style="color:var(--muted)">[C${n}]</small></div>
         <div class="inv-asn-acao">${r.acao||"—"}</div>
       </div>
+      ${rk ? `<button class="btn btn-outline btn-sm" style="flex-shrink:0;font-size:11px"
+        onclick="imprimirEtiquetaAsn('${rk}',${n})">🖨 Etiqueta</button>` : ""}
     </div>`;
   }).join("");
+}
+
+function imprimirEtiquetaAsn(receiptkey, nivel){
+  const arm = receiptkey.split("_CONTAGEM")[0].split("_").slice(-1)[0] || "—";
+  const agora = new Date().toLocaleString("pt-BR");
+  const win = window.open("","_blank");
+  win.document.write(`<!DOCTYPE html><html><head>
+  <meta charset="UTF-8"><title>Etiqueta — ${receiptkey}</title>
+  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"><\/script>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Segoe UI',Arial,sans-serif;background:#f0f4ff;padding:20px;display:flex;flex-direction:column;align-items:center}
+    .controls{background:#1A5276;color:#fff;padding:12px 20px;border-radius:8px;margin-bottom:20px;
+      display:flex;align-items:center;gap:16px;width:100%;max-width:420px}
+    .controls span{flex:1;font-size:13px}
+    .btn-p{background:#fff;color:#1A5276;border:none;padding:7px 18px;border-radius:6px;
+      font-weight:700;font-size:13px;cursor:pointer}
+    .btn-p:hover{background:#d6eaf8}
+    .label{width:100%;max-width:400px;background:#fff;border:2px solid #17202a;border-radius:4px;
+      padding:16px;display:flex;flex-direction:column;gap:0}
+    .hdr{text-align:center;padding-bottom:8px}
+    .logo-txt{font-size:24px;font-weight:900;color:#1A5276;letter-spacing:2px}
+    .sep{height:2px;background:#17202a;margin:8px 0;border-radius:1px}
+    .sub{text-align:center;font-size:10px;font-weight:600;color:#5D6D7E;letter-spacing:1px;text-transform:uppercase;padding:2px 0 6px}
+    .arm{text-align:center;font-size:38px;font-weight:900;color:#1A5276;letter-spacing:3px;
+      padding:10px 0;background:#EBF5FB;border-radius:4px;margin:4px 0}
+    .doc-lbl{font-size:10px;color:#5D6D7E;text-transform:uppercase;letter-spacing:1px;margin-top:4px}
+    .doc{font-family:'Courier New',monospace;font-size:13px;font-weight:700;color:#17202a;
+      word-break:break-all;line-height:1.45;padding:4px 0 6px}
+    .bc-wrap{display:flex;justify-content:center;padding:12px 0}
+    svg.bc{max-width:340px;width:100%}
+    .footer{text-align:center;font-size:10px;color:#5D6D7E;padding-top:6px;
+      border-top:1px solid #d5d8dc;margin-top:4px}
+    @media print{body{background:#fff;padding:0}.controls{display:none}
+      .label{border:2px solid #000;max-width:100%}}
+  </style>
+</head><body>
+  <div class="controls">
+    <span>Etiqueta C${nivel} — ${arm}</span>
+    <button class="btn-p" onclick="window.print()">🖨 Imprimir</button>
+  </div>
+  <div class="label">
+    <div class="hdr"><div class="logo-txt">LIMPPANO</div></div>
+    <div class="sep"></div>
+    <div class="sub">INVENTÁRIO BURN RJ</div>
+    <div class="arm">${arm}</div>
+    <div class="sep"></div>
+    <div class="doc-lbl">Documento</div>
+    <div class="doc">${receiptkey}</div>
+    <div class="sep"></div>
+    <div class="bc-wrap">
+      <svg class="bc" id="bcAsn" jsbarcode-value="${receiptkey}" jsbarcode-format="CODE128"
+           jsbarcode-width="2.2" jsbarcode-height="70" jsbarcode-fontsize="11"
+           jsbarcode-margin="8"></svg>
+    </div>
+    <div class="footer">Contagem ${nivel} &nbsp;|&nbsp; ${agora}</div>
+  </div>
+  <script>JsBarcode("#bcAsn");<\/script>
+</body></html>`);
+  win.document.close();
 }
 
 function _renderArmBars(containerId, progArm){
