@@ -819,12 +819,14 @@ def api_finalizar():
     if not nivel:
         return jsonify({"ok": False, "msg": "nivel obrigatorio"}), 400
     global _finalizacoes
-    _finalizacoes[str(nivel)] = {
+    # Chave inclui armazem para não sobrescrever finalizações de outros armazéns no mesmo nível
+    chave = f"{nivel}_{armazem}"
+    _finalizacoes[chave] = {
         "ts":      datetime.now(_BRT).isoformat(timespec="seconds"),
         "armazem": armazem,
         "nivel":   nivel,
     }
-    log.info(f"Contagem C{nivel} finalizada — armazém={armazem}")
+    log.info(f"Contagem C{nivel} finalizada — armazém={armazem} chave={chave}")
     return jsonify({"ok": True, "nivel": nivel})
 
 
