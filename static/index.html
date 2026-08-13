@@ -942,9 +942,10 @@ let _invRefreshInterval = null;
 function _iniciarAutoRefreshInv(){
   if (_invRefreshInterval) return;
   _invRefreshInterval = setInterval(() => {
-    if (!document.getElementById("page-inventario").classList.contains("hidden")) {
-      carregarInventario(true); // silencioso — sem overlay, sem scroll
-    }
+    // Só atualiza se a aba de inventário estiver visível E o documento estiver ativo
+    if (document.visibilityState === "hidden") return;
+    if (document.getElementById("page-inventario").classList.contains("hidden")) return;
+    carregarInventario(true); // silencioso — sem overlay, sem scroll
   }, 60000);
 }
 _iniciarAutoRefreshInv();
@@ -1457,7 +1458,7 @@ function renderSemDados(){
     '<div style="color:var(--muted);font-size:12px">Nenhum dado do painel. Execute <code>enviar_painel.py</code>.</div>';
 }
 
-function renderInventario(){
+function renderInventario(silencioso=false){
   const _scrollY = window.scrollY;
   const pd  = _painelDados;
   const inv = _invDados;
