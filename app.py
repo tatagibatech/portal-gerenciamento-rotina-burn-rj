@@ -181,6 +181,20 @@ def etiqueta_imprimir(receiptkey: str):
         return jsonify({"ok": False, "erro": str(e)}), 500
 
 
+@app.get("/etiqueta/<receiptkey>/zpl")
+def etiqueta_zpl(receiptkey: str):
+    """Retorna ZPL raw para uso via Zebra Browser Print (qualquer origem)."""
+    parts = receiptkey.split("_CONTAGEM")
+    nivel_str = parts[1] if len(parts) > 1 else "?"
+    arm = parts[0].split("_")[-1] if parts else "?"
+    arm_display = (arm[:4] + " - " + arm[4:]) if len(arm) > 4 else arm
+    zpl = _zpl_inventario(receiptkey, arm_display, nivel_str)
+    from flask import Response
+    resp = Response(zpl, mimetype="text/plain")
+    resp.headers["Access-Control-Allow-Origin"] = "*"
+    return resp
+
+
 @app.route("/etiqueta/<receiptkey>")
 def etiqueta(receiptkey: str):
     """Gera etiqueta 95×90mm com QR code embutido e impressão direta ZPL."""
@@ -269,6 +283,7 @@ def etiqueta(receiptkey: str):
 const RK = "{rk_js}";
 const SEL = document.getElementById('sel-imp');
 const BTN = document.getElementById('btn-imp');
+const ZBP  = 'http://localhost:9100';
 
 async function carregarImpressoras() {{
   try {{
@@ -286,9 +301,38 @@ async function carregarImpressoras() {{
   }} catch(e) {{}}
 }}
 
+async function zbpImprimir() {{
+  // Busca ZPL do servidor Render/local
+  const zplR = await fetch('/etiqueta/' + encodeURIComponent(RK) + '/zpl');
+  const zpl  = await zplR.text();
+  // Conecta ao Zebra Browser Print rodando localmente
+  const ctrl  = new AbortController();
+  const timer = setTimeout(function() {{ ctrl.abort(); }}, 3000);
+  let pbData;
+  try {{ pbData = await (await fetch(ZBP + '/available', {{signal: ctrl.signal}})).json(); }}
+  finally {{ clearTimeout(timer); }}
+  const imp = pbData && pbData.printer && pbData.printer[0];
+  if (!imp) throw new Error('ZBP: nenhuma impressora');
+  const wr = await fetch(ZBP + '/write', {{
+    method: 'POST',
+    headers: {{'Content-Type': 'application/json'}},
+    body: JSON.stringify({{device: imp, data: zpl}})
+  }});
+  if (!wr.ok) throw new Error('ZBP write: ' + wr.status);
+  return imp.name || 'Zebra';
+}}
+
+function resetBtn() {{
+  BTN.disabled = false; BTN.textContent = '🖨 Imprimir';
+  BTN.style.background = ''; BTN.style.color = '';
+}}
+
 async function doImprimir() {{
+  BTN.disabled = true;
+
+  // Prioridade 1: impressora local via servidor Flask
   if (SEL.value) {{
-    BTN.disabled = true; BTN.textContent = '⏳ Enviando...';
+    BTN.textContent = '⏳ Enviando...';
     try {{
       const r = await fetch('/etiqueta/' + encodeURIComponent(RK) + '/imprimir', {{
         method: 'POST',
@@ -298,25 +342,29 @@ async function doImprimir() {{
       const d = await r.json();
       if (d.ok) {{
         BTN.textContent = '✓ Impresso!';
-        BTN.style.background = '#a9dfbf';
-        BTN.style.color = '#1e8449';
+        BTN.style.background = '#a9dfbf'; BTN.style.color = '#1e8449';
       }} else {{
-        BTN.textContent = '✗ Erro';
-        alert('Erro ao imprimir: ' + d.erro);
+        alert('Erro: ' + d.erro); resetBtn(); return;
       }}
-    }} catch(e) {{
-      BTN.textContent = '✗ Falha';
-      alert('Falha de rede: ' + e);
-    }}
-    setTimeout(function() {{
-      BTN.disabled = false;
-      BTN.textContent = '🖨 Imprimir';
-      BTN.style.background = '';
-      BTN.style.color = '';
-    }}, 3000);
-  }} else {{
-    window.print();
+    }} catch(e) {{ alert('Falha: ' + e); resetBtn(); return; }}
+    setTimeout(resetBtn, 3000);
+    return;
   }}
+
+  // Prioridade 2: Zebra Browser Print (funciona do Render via localhost)
+  BTN.textContent = '⏳ ZBP...';
+  try {{
+    await zbpImprimir();
+    BTN.textContent = '✓ Impresso!';
+    BTN.style.background = '#a9dfbf'; BTN.style.color = '#1e8449';
+    setTimeout(resetBtn, 3000);
+    return;
+  }} catch(e) {{
+    // ZBP não disponível — fallback para janela de impressão do browser
+  }}
+
+  resetBtn();
+  window.print();
 }}
 
 BTN.addEventListener('click', doImprimir);
