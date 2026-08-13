@@ -775,25 +775,32 @@ button:disabled{opacity:.5;cursor:not-allowed}
 
   <!-- ── ABA: DIVERGÊNCIAS ── -->
   <div id="inv-tab-divergencias" class="inv-tab-content hidden">
-    <div class="inv-charts-grid">
-      <div class="inv-chart-card" style="grid-column:1/-1">
-        <div class="inv-chart-title">Top 20 SKUs por Valor Divergente (R$)</div>
-        <canvas id="chartPareto" height="160"></canvas>
-      </div>
+    <!-- Resumo consolidado -->
+    <div id="invDivResumo" style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap"></div>
+    <!-- Gráfico consolidado -->
+    <div class="inv-chart-card" style="margin-bottom:16px">
+      <div class="inv-chart-title">Resumo Consolidado — Sobras vs Faltas (R$)</div>
+      <canvas id="chartPareto" height="90"></canvas>
     </div>
-    <div class="inv-div-grid" style="margin-top:16px">
-      <div>
-        <div class="section-title">Faltas (divergência negativa)</div>
-        <table class="backlog-table"><thead><tr>
-          <th>SKU</th><th>Depósito</th><th>Qtd ERP</th><th>Qtd Final</th><th>Divergência</th><th>Valor R$</th>
-        </tr></thead><tbody id="invFaltasBody"></tbody></table>
-      </div>
-      <div>
-        <div class="section-title">Sobras (divergência positiva)</div>
-        <table class="backlog-table"><thead><tr>
-          <th>SKU</th><th>Depósito</th><th>Qtd ERP</th><th>Qtd Final</th><th>Divergência</th><th>Valor R$</th>
-        </tr></thead><tbody id="invSobrasBody"></tbody></table>
-      </div>
+    <!-- Toolbar tabela -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+      <div class="section-title" style="margin:0">Detalhamento das Divergências</div>
+      <button class="btn btn-outline btn-sm" onclick="exportarDivergenciasExcel()">📥 Excel</button>
+    </div>
+    <!-- Tabela única sortável -->
+    <div class="backlog-table-wrap">
+      <table class="backlog-table" id="tblDivergencias">
+        <thead><tr>
+          <th onclick="sortDiv('sku')" style="cursor:pointer;user-select:none">SKU <span id="srt-sku">⇅</span></th>
+          <th onclick="sortDiv('deposito_erp')" style="cursor:pointer;user-select:none">Depósito <span id="srt-deposito_erp">⇅</span></th>
+          <th onclick="sortDiv('tipo')" style="cursor:pointer;user-select:none">Tipo <span id="srt-tipo">⇅</span></th>
+          <th onclick="sortDiv('qty_erp')" style="cursor:pointer;user-select:none;text-align:right">Qtd ERP <span id="srt-qty_erp">⇅</span></th>
+          <th onclick="sortDiv('qty_final')" style="cursor:pointer;user-select:none;text-align:right">Qtd Final <span id="srt-qty_final">⇅</span></th>
+          <th onclick="sortDiv('divergencia')" style="cursor:pointer;user-select:none;text-align:right">Divergência <span id="srt-divergencia">⇅</span></th>
+          <th onclick="sortDiv('valor_abs')" style="cursor:pointer;user-select:none;text-align:right">Valor R$ <span id="srt-valor_abs">⇅</span></th>
+        </tr></thead>
+        <tbody id="invDivBody"></tbody>
+      </table>
     </div>
   </div>
 
@@ -2007,67 +2014,137 @@ function _invStatusStyle(s){
   return m[s] || ["#999","?"];
 }
 
+let _divSort  = { col: 'valor_abs', asc: false };
+let _divLinhas = [];
+
+function sortDiv(col){
+  if (_divSort.col === col) _divSort.asc = !_divSort.asc;
+  else { _divSort.col = col; _divSort.asc = false; }
+  renderDivTable();
+}
+
+function renderDivTable(){
+  const sorted = [..._divLinhas].sort((a,b) => {
+    const va = a[_divSort.col] ?? 0;
+    const vb = b[_divSort.col] ?? 0;
+    if (typeof va === 'string') return _divSort.asc ? va.localeCompare(vb) : vb.localeCompare(va);
+    return _divSort.asc ? va - vb : vb - va;
+  });
+
+  const COLS = ['sku','deposito_erp','tipo','qty_erp','qty_final','divergencia','valor_abs'];
+  COLS.forEach(c => {
+    const el = document.getElementById(`srt-${c}`);
+    if (el) el.textContent = _divSort.col === c ? (_divSort.asc ? '▲' : '▼') : '⇅';
+  });
+
+  document.getElementById("invDivBody").innerHTML = sorted.map(l => {
+    const cor = l.divergencia < 0 ? '#EF4444' : '#22C55E';
+    const sinal = l.divergencia > 0 ? '+' : '';
+    return `<tr>
+      <td><strong>${l.sku}</strong></td>
+      <td>${l.deposito_erp||"—"}</td>
+      <td><span style="color:${cor};font-weight:700">${l.tipo}</span></td>
+      <td class="td-qty">${_fmt(l.qty_erp,5)}</td>
+      <td class="td-qty">${l.qty_final!=null?_fmt(l.qty_final,5):"—"}</td>
+      <td class="td-qty" style="color:${cor};font-weight:700">${sinal}${_fmt(l.divergencia,5)}</td>
+      <td class="td-qty" style="color:${cor};font-weight:700">${l.divergencia<0?"- ":"+ "}R$ ${_fmt(Math.abs(l.valor_div||0))}</td>
+    </tr>`;
+  }).join("") ||
+    '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:16px">Sem divergências registradas</td></tr>';
+}
+
 function renderDivergencias(){
-  // Usa itens do painelDados quando disponível, senão linhas do invDados
-  let divLinhas = [];
+  _divLinhas = [];
   if (_painelDados && (_painelDados.itens||[]).length) {
-    divLinhas = (_painelDados.itens||[])
+    _divLinhas = (_painelDados.itens||[])
       .filter(it => it.div_qty != null && it.div_qty !== 0)
       .map(it => ({
-        sku:        it.sku,
-        deposito_erp: it.deposito_nome || String(it.deposito),
-        qty_erp:    it.qty_erp,
-        qty_final:  it.qty_final,
+        sku:         it.sku,
+        deposito_erp: it.armazem_wms || it.deposito_nome || String(it.deposito),
+        tipo:        it.div_qty < 0 ? 'Falta' : 'Sobra',
+        qty_erp:     it.qty_erp,
+        qty_final:   it.qty_final,
         divergencia: it.div_qty,
-        valor_div:  it.div_val,
+        valor_div:   it.div_val,
+        valor_abs:   Math.abs(it.div_val||0),
       }));
   } else if (_invDados) {
-    divLinhas = (_invDados.linhas||[]).filter(l => l.divergencia != null && l.divergencia !== 0);
+    _divLinhas = (_invDados.linhas||[])
+      .filter(l => l.divergencia != null && l.divergencia !== 0)
+      .map(l => ({...l, tipo: l.divergencia < 0 ? 'Falta' : 'Sobra', valor_abs: Math.abs(l.valor_div||0)}));
   }
 
-  const faltas = divLinhas.filter(l => l.divergencia < 0).sort((a,b) => (a.valor_div||0)-(b.valor_div||0)).slice(0,20);
-  const sobras = divLinhas.filter(l => l.divergencia > 0).sort((a,b) => (b.valor_div||0)-(a.valor_div||0)).slice(0,20);
+  // Totais consolidados
+  const totalFaltas = _divLinhas.filter(l=>l.divergencia<0).reduce((s,l)=>s+Math.abs(l.valor_div||0),0);
+  const totalSobras = _divLinhas.filter(l=>l.divergencia>0).reduce((s,l)=>s+(l.valor_div||0),0);
+  const resultado   = totalSobras - totalFaltas;
+  const resCor      = resultado >= 0 ? '#22C55E' : '#EF4444';
+  const resDesc     = resultado >= 0 ? 'Estoque acima do ERP' : 'Estoque abaixo do ERP';
 
-  const rowDiv = (l) => `<tr>
-    <td><strong>${l.sku}</strong></td><td>${l.deposito_erp||"—"}</td>
-    <td class="td-qty">${_fmt(l.qty_erp)}</td>
-    <td class="td-qty">${l.qty_final!=null?_fmt(l.qty_final):"—"}</td>
-    <td class="td-qty" style="color:${l.divergencia<0?"#EF4444":"#22C55E"};font-weight:700">
-      ${l.divergencia>0?"+":" "}${_fmt(l.divergencia)}</td>
-    <td class="td-qty">R$ ${_fmt(Math.abs(l.valor_div||0))}</td>
-  </tr>`;
+  // Resumo KPI cards
+  document.getElementById("invDivResumo").innerHTML = `
+    <div style="background:#fff;border-radius:8px;padding:14px 20px;box-shadow:var(--shadow);border-left:4px solid #EF4444;flex:1;min-width:180px">
+      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Total Faltas</div>
+      <div style="font-size:22px;font-weight:800;color:#EF4444">- R$ ${_fmt(totalFaltas)}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:2px">${_divLinhas.filter(l=>l.divergencia<0).length} SKU(s)</div>
+    </div>
+    <div style="background:#fff;border-radius:8px;padding:14px 20px;box-shadow:var(--shadow);border-left:4px solid #22C55E;flex:1;min-width:180px">
+      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Total Sobras</div>
+      <div style="font-size:22px;font-weight:800;color:#22C55E">+ R$ ${_fmt(totalSobras)}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:2px">${_divLinhas.filter(l=>l.divergencia>0).length} SKU(s)</div>
+    </div>
+    <div style="background:#fff;border-radius:8px;padding:14px 20px;box-shadow:var(--shadow);border-left:4px solid ${resCor};flex:1;min-width:200px">
+      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Resultado (Sobras − Faltas)</div>
+      <div style="font-size:22px;font-weight:800;color:${resCor}">${resultado>=0?"+":"-"} R$ ${_fmt(Math.abs(resultado))}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:2px">${resDesc}</div>
+    </div>`;
 
-  document.getElementById("invFaltasBody").innerHTML = faltas.map(rowDiv).join("") ||
-    '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:12px">Sem faltas</td></tr>';
-  document.getElementById("invSobrasBody").innerHTML = sobras.map(rowDiv).join("") ||
-    '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:12px">Sem sobras</td></tr>';
-
-  const top20 = [...divLinhas].sort((a,b) => Math.abs(b.valor_div||0)-Math.abs(a.valor_div||0)).slice(0,20);
+  // Gráfico consolidado (2 barras horizontais)
   if (_chartPareto) _chartPareto.destroy();
-  if (!top20.length) return;
-  const acum = []; let soma = 0;
-  const totalAbs = top20.reduce((s,l) => s+Math.abs(l.valor_div||0),0);
-  top20.forEach(l => { soma += Math.abs(l.valor_div||0); acum.push(totalAbs>0?Math.round(soma/totalAbs*100):0); });
-
   _chartPareto = new Chart(document.getElementById("chartPareto"), {
+    type: "bar",
     data:{
-      labels: top20.map(l => `${l.sku}`),
-      datasets:[
-        {type:"bar", label:"Valor Div. R$", data:top20.map(l=>Math.abs(l.valor_div||0)),
-         backgroundColor: top20.map(l=>l.divergencia<0?"#FCA5A5":"#86EFAC"), yAxisID:"y"},
-        {type:"line", label:"% Acumulado", data:acum, borderColor:"#1437A0",
-         borderWidth:2, pointRadius:3, fill:false, yAxisID:"y2"},
-      ]
+      labels: ["Total Faltas","Total Sobras"],
+      datasets:[{
+        label:"Valor (R$)",
+        data:[totalFaltas, totalSobras],
+        backgroundColor:["rgba(252,165,165,.8)","rgba(134,239,172,.8)"],
+        borderColor:["#EF4444","#22C55E"],
+        borderWidth:2, borderRadius:6
+      }]
     },
     options:{
-      plugins:{legend:{position:"top",labels:{font:{size:10}}}},
-      scales:{
-        y:{ticks:{font:{size:10},callback:v=>"R$"+_fmt(v)}},
-        y2:{position:"right",ticks:{font:{size:10},callback:v=>v+"%"},max:100,grid:{drawOnChartArea:false}}
-      },
-      responsive:true,maintainAspectRatio:false
+      indexAxis:"y",
+      plugins:{legend:{display:false}, tooltip:{callbacks:{label:ctx=>"R$ "+_fmt(ctx.parsed.x)}}},
+      scales:{x:{ticks:{callback:v=>"R$ "+_fmt(v),font:{size:10}}}},
+      responsive:true, maintainAspectRatio:false
     }
   });
+
+  renderDivTable();
+}
+
+function exportarDivergenciasExcel(){
+  if (!_divLinhas.length) return toast("Sem divergências para exportar.", "error");
+  const sep = ";";
+  const prefixo = (_painelDados&&_painelDados.prefixo)||(_invDados&&_invDados.prefixo)||"inventario";
+  const totalFaltas = _divLinhas.filter(l=>l.divergencia<0).reduce((s,l)=>s+Math.abs(l.valor_div||0),0);
+  const totalSobras = _divLinhas.filter(l=>l.divergencia>0).reduce((s,l)=>s+(l.valor_div||0),0);
+  const rows = [
+    `DIVERGÊNCIAS DE INVENTÁRIO — ${prefixo}`,
+    "",
+    ["SKU","Depósito","Tipo","Qtd ERP","Qtd Final","Divergência","Valor R$"].join(sep),
+    ..._divLinhas.map(l=>[l.sku, l.deposito_erp||"—", l.tipo,
+      l.qty_erp??"", l.qty_final??"", l.divergencia??"", l.valor_div??""
+    ].join(sep)),
+    "",
+    "RESUMO",
+    ["Total Faltas","","","","","", -totalFaltas].join(sep),
+    ["Total Sobras","","","","","", totalSobras].join(sep),
+    ["Resultado (Sobras - Faltas)","","","","","", totalSobras - totalFaltas].join(sep),
+  ];
+  _download("﻿"+rows.join("\n"), `divergencias_${prefixo}_${_hoje()}.csv`, "text/csv");
+  toast("Excel exportado com sucesso", "success");
 }
 
 function exportarInventarioExcel(){
