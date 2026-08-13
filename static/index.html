@@ -1798,21 +1798,20 @@ function renderBaseErp(){
     const [cor, lbl] = _invStatusStyle(it.status);
     // Arredonda div_qty para evitar floating point (ex: 0.0040000000000000036 → 0.004)
     const divQty = it.div_qty != null ? Math.round(it.div_qty * 100000) / 100000 : null;
-    const dv  = divQty != null ? (divQty > 0 ? "+" : "") + _fmt(divQty) : "—";
+    const dv  = divQty != null ? (divQty > 0 ? "+" : "") + _fmt(divQty, 5) : "—";
     const dvv = it.div_val != null ? (it.div_val > 0 ? "+" : "") + "R$ " + _fmt(Math.abs(Math.round(it.div_val * 100) / 100)) : "—";
     const dvCor = divQty == null ? "" : divQty > 0 ? "color:#22C55E" : divQty < 0 ? "color:#EF4444" : "color:var(--muted)";
-    // Depósito: usa armazem_wms quando disponível, senão deposito_nome
     const depNome = it.armazem_wms || it.deposito_nome || it.deposito || "—";
     return `<tr>
       <td><strong>${it.sku}</strong></td>
       <td>${depNome}</td>
-      <td class="td-qty">${_fmt(it.qty_erp)}</td>
-      <td class="td-qty">${_fmt(it.qty_reservado)}</td>
+      <td class="td-qty">${_fmt(it.qty_erp, 5)}</td>
+      <td class="td-qty">${_fmt(it.qty_reservado, 5)}</td>
       <td class="td-qty">${it.preco_unit != null ? "R$ "+_fmt(it.preco_unit) : "—"}</td>
       <td class="td-qty">${it.valor_erp != null ? "R$ "+_fmt(it.valor_erp) : "—"}</td>
-      <td class="td-qty">${it.c1 != null ? _fmt(it.c1) : "—"}</td>
-      <td class="td-qty">${it.c2 != null ? _fmt(it.c2) : "—"}</td>
-      <td class="td-qty">${it.c3 != null ? _fmt(it.c3) : "—"}</td>
+      <td class="td-qty">${it.c1 != null ? _fmt(it.c1, 5) : "—"}</td>
+      <td class="td-qty">${it.c2 != null ? _fmt(it.c2, 5) : "—"}</td>
+      <td class="td-qty">${it.c3 != null ? _fmt(it.c3, 5) : "—"}</td>
       <td class="td-qty" style="${dvCor};font-weight:700">${dv}</td>
       <td class="td-qty" style="${dvCor};font-weight:700">${dvv}</td>
       <td><span class="inv-status-badge" style="background:${cor};color:#fff">${lbl}</span></td>
@@ -1853,7 +1852,7 @@ function renderContagensWms(){
     <td>${l.zona||"—"}</td>
     <td>${l.tipo||"—"}</td>
     <td><strong>${l.sku||"—"}</strong></td>
-    <td class="td-qty"><strong>${_fmt(l.qty)}</strong></td>
+    <td class="td-qty"><strong>${_fmt(l.qty, 5)}</strong></td>
   </tr>`;
 
   const vazio = n => `<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px">📦 Nenhuma leitura C${n} registrada.</td></tr>`;
