@@ -759,7 +759,7 @@ button:disabled{opacity:.5;cursor:not-allowed}
           <option value="">Todos os status</option>
           <option>PENDENTE</option><option>C1_OK</option><option>AGUARDA_C2</option>
           <option>C2_OK</option><option>AGUARDA_C3</option><option>CONCLUIDO</option>
-          <option>DIVERGENCIA_WMS</option><option>SOBRA_WMS_OK</option><option>FALTA_WMS</option>
+          <option>DIVERGENCIA_WMS</option><option>SOBRA_WMS</option><option>SOBRA_WMS_OK</option><option>FALTA_WMS</option>
         </select>
         <span id="pkErpTotal" style="font-size:11px;color:var(--muted);margin-left:auto"></span>
         <button class="btn btn-outline btn-sm" onclick="exportarBaseErpExcel()" style="margin-left:8px">📥 Excel</button>
@@ -1516,12 +1516,12 @@ let _chartStatus = null, _chartPareto = null;
 const INV_STATUS_LABEL = {
   PENDENTE:"Pendente", FALTA_WMS:"Não Contado", C1_OK:"C1 OK", AGUARDA_C2:"Aguarda C2",
   C2_OK:"C2 OK", AGUARDA_C3:"Aguarda C3", CONCLUIDO:"Concluído",
-  DIVERGENCIA_WMS:"Extra WMS", SOBRA_WMS_OK:"Sobra WMS OK"
+  SOBRA_WMS:"Sobra WMS", DIVERGENCIA_WMS:"Extra WMS", SOBRA_WMS_OK:"Sobra WMS OK"
 };
 const INV_STATUS_COLORS = {
   PENDENTE:"#F59E0B", FALTA_WMS:"#9CA3AF", C1_OK:"#22C55E", AGUARDA_C2:"#3B82F6",
   C2_OK:"#10B981", AGUARDA_C3:"#F97316", CONCLUIDO:"#6B7280",
-  DIVERGENCIA_WMS:"#DC2626", SOBRA_WMS_OK:"#8B5CF6"
+  SOBRA_WMS:"#7C3AED", DIVERGENCIA_WMS:"#DC2626", SOBRA_WMS_OK:"#8B5CF6"
 };
 
 async function reabrirInventario(){
@@ -1676,7 +1676,7 @@ function renderInventario(silencioso=false){
     const divWms   = itens.filter(i => _isWmsExtra(i.status) && i.c1 != null).length;
     const contados = itensErp.filter(i => i.c1 !== null && i.c1 !== undefined).length + divWms;
     const c1_ok    = itensErp.filter(i => i.status === "C1_OK").length;
-    const concl    = itens.filter(i => ["C1_OK","C2_OK","CONCLUIDO","SOBRA_WMS_OK"].includes(i.status)).length;
+    const concl    = itens.filter(i => ["C1_OK","C2_OK","CONCLUIDO","SOBRA_WMS_OK","SOBRA_WMS"].includes(i.status)).length;
     const pend     = itens.filter(i => i.status === "PENDENTE" || i.status === "FALTA_WMS").length;
     const em_c2    = itens.filter(i => i.status === "AGUARDA_C2").length;
     const em_c3    = itens.filter(i => i.status === "AGUARDA_C3").length;
@@ -2417,7 +2417,7 @@ function exportarBaseErpExcel(){
   const INV_LBL = {
     PENDENTE:"Pendente", FALTA_WMS:"Não Contado", C1_OK:"C1 OK", AGUARDA_C2:"Aguarda C2",
     C2_OK:"C2 OK", AGUARDA_C3:"Aguarda C3", CONCLUIDO:"Concluído",
-    DIVERGENCIA_WMS:"Extra WMS", SOBRA_WMS_OK:"Sobra WMS OK"
+    DIVERGENCIA_WMS:"Extra WMS", SOBRA_WMS:"Sobra WMS", SOBRA_WMS_OK:"Sobra WMS OK"
   };
 
   const rows = [
