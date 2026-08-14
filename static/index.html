@@ -1690,8 +1690,8 @@ function renderInventario(silencioso=false){
       acurElem.textContent = "—";
       acurElem.style.color = "";
     }
-    document.getElementById("invConcluidos").textContent = `${concl} / ${total}`;
-    document.getElementById("lbConcluidos").textContent  = "Concluídos";
+    document.getElementById("invConcluidos").textContent = `${concl} / ${pend}`;
+    document.getElementById("lbConcluidos").textContent  = "Concluídos / Pendentes";
     document.getElementById("invPendentes").textContent  = pend.toLocaleString("pt-BR");
     document.getElementById("lbPendentes").textContent   = "Pendentes";
     document.getElementById("invEmC2").textContent       = em_c2.toLocaleString("pt-BR");
