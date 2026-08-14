@@ -762,6 +762,7 @@ button:disabled{opacity:.5;cursor:not-allowed}
           <option>DIVERGENCIA_WMS</option><option>SOBRA_WMS_OK</option><option>FALTA_WMS</option>
         </select>
         <span id="pkErpTotal" style="font-size:11px;color:var(--muted);margin-left:auto"></span>
+        <button class="btn btn-outline btn-sm" onclick="exportarBaseErpExcel()" style="margin-left:8px">📥 Excel</button>
       </div>
       <div style="overflow-x:auto">
         <table class="backlog-table">
@@ -2352,6 +2353,52 @@ function exportarDivergenciasExcel(){
     ["Resultado (Sobras - Faltas)","","","","","", totalSobras - totalFaltas].join(sep),
   ];
   _download("﻿"+rows.join("\n"), `divergencias_${prefixo}_${_hoje()}.csv`, "text/csv");
+  toast("Excel exportado com sucesso", "success");
+}
+
+function exportarBaseErpExcel(){
+  const pd = _painelDados;
+  if (!pd || !pd.itens || !pd.itens.length) return toast("Sem dados para exportar.", "error");
+  const sep = ";";
+  const prefixo = pd.prefixo || "inventario";
+
+  const fSku    = (document.getElementById("pkFiltroSku")||{}).value?.toLowerCase()||"";
+  const fDesc   = (document.getElementById("pkFiltroDescErp")||{}).value?.toLowerCase()||"";
+  const fDep    = (document.getElementById("pkFiltroDep")||{}).value?.toLowerCase()||"";
+  const fStatus = (document.getElementById("pkFiltroStatus")||{}).value||"";
+
+  const dados = pd.itens.filter(it =>
+    (!fSku    || String(it.sku||"").toLowerCase().includes(fSku)) &&
+    (!fDesc   || String(it.descricao||"").toLowerCase().includes(fDesc)) &&
+    (!fDep    || String(it.deposito_nome||"").toLowerCase().includes(fDep)) &&
+    (!fStatus || it.status === fStatus)
+  );
+
+  const INV_LBL = {
+    PENDENTE:"Pendente", FALTA_WMS:"Não Contado", C1_OK:"C1 OK", AGUARDA_C2:"Aguarda C2",
+    C2_OK:"C2 OK", AGUARDA_C3:"Aguarda C3", CONCLUIDO:"Concluído",
+    DIVERGENCIA_WMS:"Extra WMS", SOBRA_WMS_OK:"Sobra WMS OK"
+  };
+
+  const rows = [
+    `BASE ERP — ${prefixo}`,
+    "",
+    ["SKU","Depósito","Descrição","Qtd ERP","Reservado","Preço Unit","Valor ERP","C1","C2","C3","Div Qtd","Div R$","Status"].join(sep),
+    ...dados.map(it => [
+      it.sku,
+      it.armazem_wms || it.deposito_nome || it.deposito || "",
+      it.descricao || "",
+      it.qty_erp ?? "",
+      it.qty_reservado ?? "",
+      it.preco_unit != null ? it.preco_unit : "",
+      it.valor_erp != null ? it.valor_erp : "",
+      it.c1 ?? "", it.c2 ?? "", it.c3 ?? "",
+      it.div_qty != null ? Math.round(it.div_qty * 100000) / 100000 : "",
+      it.div_val != null ? Math.round(it.div_val * 100) / 100 : "",
+      INV_LBL[it.status] || it.status || ""
+    ].join(sep))
+  ];
+  _download("﻿" + rows.join("\n"), `base_erp_${prefixo}_${_hoje()}.csv`, "text/csv;charset=utf-8");
   toast("Excel exportado com sucesso", "success");
 }
 
