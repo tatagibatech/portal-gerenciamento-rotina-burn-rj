@@ -863,7 +863,11 @@ button:disabled{opacity:.5;cursor:not-allowed}
     <!-- Toolbar tabela -->
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
       <div class="section-title" style="margin:0">Detalhamento das Divergências</div>
-      <button class="btn btn-outline btn-sm" onclick="exportarDivergenciasExcel()">📥 Excel</button>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+        <input type="text" id="divFiltroSku"  placeholder="SKU..."       class="inv-filtro" style="width:100px" oninput="_divPag=1;renderDivTable()">
+        <input type="text" id="divFiltroDesc" placeholder="Descrição..."  class="inv-filtro" style="width:180px" oninput="_divPag=1;renderDivTable()">
+        <button class="btn btn-outline btn-sm" onclick="exportarDivergenciasExcel()">📥 Excel</button>
+      </div>
     </div>
     <!-- Tabela única sortável -->
     <div class="backlog-table-wrap">
@@ -871,6 +875,7 @@ button:disabled{opacity:.5;cursor:not-allowed}
         <thead><tr>
           <th onclick="sortDiv('sku')" style="cursor:pointer;user-select:none">SKU <span id="srt-sku">⇅</span></th>
           <th onclick="sortDiv('deposito_erp')" style="cursor:pointer;user-select:none">Depósito <span id="srt-deposito_erp">⇅</span></th>
+          <th onclick="sortDiv('descricao')" style="cursor:pointer;user-select:none">Descrição <span id="srt-descricao">⇅</span></th>
           <th onclick="sortDiv('tipo')" style="cursor:pointer;user-select:none">Tipo <span id="srt-tipo">⇅</span></th>
           <th onclick="sortDiv('qty_erp')" style="cursor:pointer;user-select:none;text-align:right">Qtd ERP <span id="srt-qty_erp">⇅</span></th>
           <th onclick="sortDiv('qty_final')" style="cursor:pointer;user-select:none;text-align:right">Qtd Final <span id="srt-qty_final">⇅</span></th>
@@ -880,6 +885,7 @@ button:disabled{opacity:.5;cursor:not-allowed}
         <tbody id="invDivBody"></tbody>
       </table>
     </div>
+    <div id="divPagBar" style="display:flex;justify-content:flex-end;align-items:center;gap:6px;margin-top:8px;flex-wrap:wrap"></div>
   </div>
 
 
@@ -1719,6 +1725,7 @@ function setInvTab(id){
   ["resumo","armazens","contagens","divergencias"].forEach(t => {
     document.getElementById(`inv-tab-${t}`).classList.toggle("hidden", t !== id);
   });
+  if (id === "divergencias") renderDivergencias();
 }
 
 function _renderAsnCards(containerId, asns){
@@ -2251,33 +2258,49 @@ function _invStatusStyle(s){
 
 let _divSort  = { col: 'valor_abs', asc: false };
 let _divLinhas = [];
+let _divPag   = 1;
+const DIV_PG  = 50;
 
 function sortDiv(col){
   if (_divSort.col === col) _divSort.asc = !_divSort.asc;
   else { _divSort.col = col; _divSort.asc = false; }
+  _divPag = 1;
   renderDivTable();
 }
 
 function renderDivTable(){
-  const sorted = [..._divLinhas].sort((a,b) => {
+  const fSku  = (document.getElementById("divFiltroSku") ||{}).value?.toLowerCase()||"";
+  const fDesc = (document.getElementById("divFiltroDesc")||{}).value?.toLowerCase()||"";
+
+  const filtered = _divLinhas.filter(l =>
+    (!fSku  || String(l.sku||"").toLowerCase().includes(fSku)) &&
+    (!fDesc || String(l.descricao||"").toLowerCase().includes(fDesc))
+  );
+
+  const sorted = [...filtered].sort((a,b) => {
     const va = a[_divSort.col] ?? 0;
     const vb = b[_divSort.col] ?? 0;
     if (typeof va === 'string') return _divSort.asc ? va.localeCompare(vb) : vb.localeCompare(va);
     return _divSort.asc ? va - vb : vb - va;
   });
 
-  const COLS = ['sku','deposito_erp','tipo','qty_erp','qty_final','divergencia','valor_abs'];
+  const COLS = ['sku','deposito_erp','descricao','tipo','qty_erp','qty_final','divergencia','valor_abs'];
   COLS.forEach(c => {
     const el = document.getElementById(`srt-${c}`);
     if (el) el.textContent = _divSort.col === c ? (_divSort.asc ? '▲' : '▼') : '⇅';
   });
 
-  document.getElementById("invDivBody").innerHTML = sorted.map(l => {
-    const cor = l.divergencia < 0 ? '#EF4444' : '#22C55E';
+  const total = Math.ceil(sorted.length / DIV_PG) || 1;
+  if (_divPag > total) _divPag = 1;
+  const page = sorted.slice((_divPag-1)*DIV_PG, _divPag*DIV_PG);
+
+  document.getElementById("invDivBody").innerHTML = page.map(l => {
+    const cor   = l.divergencia < 0 ? '#EF4444' : '#22C55E';
     const sinal = l.divergencia > 0 ? '+' : '';
     return `<tr>
       <td><strong>${l.sku}</strong></td>
       <td>${l.deposito_erp||"—"}</td>
+      <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${l.descricao||""}">${l.descricao||"—"}</td>
       <td><span style="color:${cor};font-weight:700">${l.tipo}</span></td>
       <td class="td-qty">${_fmt(l.qty_erp,5)}</td>
       <td class="td-qty">${l.qty_final!=null?_fmt(l.qty_final,5):"—"}</td>
@@ -2285,8 +2308,17 @@ function renderDivTable(){
       <td class="td-qty" style="color:${cor};font-weight:700">${l.valor_div!=null ? (l.divergencia<0?"- ":"+ ")+"R$ "+_fmt(Math.abs(l.valor_div)) : "—"}</td>
     </tr>`;
   }).join("") ||
-    '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:16px">Sem divergências registradas</td></tr>';
+    '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:16px">Sem divergências registradas</td></tr>';
+
+  const pag = document.getElementById("divPagBar");
+  if (pag) pag.innerHTML = `
+    <span style="font-size:11px;color:var(--muted)">${filtered.length} itens</span>
+    <button class="pag-btn${_divPag===1?' disabled':''}" onclick="_divMudaPag(${_divPag-1})">‹ Ant</button>
+    <button class="pag-btn active">${_divPag}/${total}</button>
+    <button class="pag-btn${_divPag>=total?' disabled':''}" onclick="_divMudaPag(${_divPag+1})">Prox ›</button>`;
 }
+
+function _divMudaPag(p){ if(p<1||p>Math.ceil(_divLinhas.length/DIV_PG)) return; _divPag=p; renderDivTable(); }
 
 function renderDivergencias(){
   _divLinhas = [];
@@ -2294,14 +2326,15 @@ function renderDivergencias(){
     _divLinhas = (_painelDados.itens||[])
       .filter(it => it.div_qty != null && it.div_qty !== 0)
       .map(it => ({
-        sku:         it.sku,
+        sku:          it.sku,
         deposito_erp: it.armazem_wms || it.deposito_nome || String(it.deposito),
-        tipo:        it.div_qty < 0 ? 'Falta' : 'Sobra',
-        qty_erp:     it.qty_erp,
-        qty_final:   it.qty_final,
-        divergencia: it.div_qty,
-        valor_div:   it.div_val,
-        valor_abs:   it.div_val != null ? Math.abs(it.div_val) : Math.abs(it.div_qty||0),
+        descricao:    it.descricao || "",
+        tipo:         it.div_qty < 0 ? 'Falta' : 'Sobra',
+        qty_erp:      it.qty_erp,
+        qty_final:    it.qty_final,
+        divergencia:  it.div_qty,
+        valor_div:    it.div_val,
+        valor_abs:    it.div_val != null ? Math.abs(it.div_val) : Math.abs(it.div_qty||0),
       }));
   } else if (_invDados) {
     _divLinhas = (_invDados.linhas||[])
@@ -2344,29 +2377,31 @@ function renderDivergencias(){
       <div style="font-size:11px;color:var(--muted);margin-top:2px">${resDesc}</div>
     </div>`;
 
-  // Gráfico consolidado (2 barras horizontais)
-  if (_chartPareto) _chartPareto.destroy();
-  _chartPareto = new Chart(document.getElementById("chartPareto"), {
-    type: "bar",
-    data:{
-      labels: [`Total Faltas (${unid})`,`Total Sobras (${unid})`],
-      datasets:[{
-        label: unid,
-        data:[totalFaltas, totalSobras],
-        backgroundColor:["rgba(252,165,165,.8)","rgba(134,239,172,.8)"],
-        borderColor:["#EF4444","#22C55E"],
-        borderWidth:2, borderRadius:6
-      }]
-    },
-    options:{
-      indexAxis:"y",
-      plugins:{legend:{display:false}, tooltip:{callbacks:{label:ctx=>(usaValor?"R$ ":"")+_fmt(ctx.parsed.x)+(usaValor?"":" Qtd")}}},
-      scales:{x:{ticks:{callback:v=>(usaValor?"R$ ":"")+_fmt(v),font:{size:10}}}},
-      responsive:true, maintainAspectRatio:false
-    }
-  });
-
   renderDivTable();
+
+  // Gráfico consolidado (2 barras horizontais) — só cria quando canvas visível
+  try {
+    if (_chartPareto) { _chartPareto.destroy(); _chartPareto = null; }
+    _chartPareto = new Chart(document.getElementById("chartPareto"), {
+      type: "bar",
+      data:{
+        labels: [`Total Faltas (${unid})`,`Total Sobras (${unid})`],
+        datasets:[{
+          label: unid,
+          data:[totalFaltas, totalSobras],
+          backgroundColor:["rgba(252,165,165,.8)","rgba(134,239,172,.8)"],
+          borderColor:["#EF4444","#22C55E"],
+          borderWidth:2, borderRadius:6
+        }]
+      },
+      options:{
+        indexAxis:"y",
+        plugins:{legend:{display:false}, tooltip:{callbacks:{label:ctx=>(usaValor?"R$ ":"")+_fmt(ctx.parsed.x)+(usaValor?"":" Qtd")}}},
+        scales:{x:{ticks:{callback:v=>(usaValor?"R$ ":"")+_fmt(v),font:{size:10}}}},
+        responsive:true, maintainAspectRatio:false
+      }
+    });
+  } catch(e) { console.warn("chartPareto:", e); }
 }
 
 function exportarDivergenciasExcel(){
@@ -2380,18 +2415,19 @@ function exportarDivergenciasExcel(){
   const totalSobras = usaValor
     ? _divLinhas.filter(l=>l.divergencia>0).reduce((s,l)=>s+(l.valor_div||0),0)
     : _divLinhas.filter(l=>l.divergencia>0).reduce((s,l)=>s+(l.divergencia||0),0);
+  const nb = (v,d=5) => v!=null ? Number(v).toFixed(d).replace(".",",") : "";
   const rows = [
     `DIVERGÊNCIAS DE INVENTÁRIO — ${prefixo}`,
     "",
-    ["SKU","Depósito","Tipo","Qtd ERP","Qtd Final","Divergência","Valor R$"].join(sep),
-    ..._divLinhas.map(l=>[l.sku, l.deposito_erp||"—", l.tipo,
-      l.qty_erp??"", l.qty_final??"", l.divergencia??"", l.valor_div??""
+    ["SKU","Depósito","Descrição","Tipo","Qtd ERP","Qtd Final","Divergência","Valor R$"].join(sep),
+    ..._divLinhas.map(l=>[l.sku, l.deposito_erp||"—", l.descricao||"",l.tipo,
+      nb(l.qty_erp), nb(l.qty_final), nb(l.divergencia), nb(l.valor_div,2)
     ].join(sep)),
     "",
     "RESUMO",
-    ["Total Faltas","","","","","", -totalFaltas].join(sep),
-    ["Total Sobras","","","","","", totalSobras].join(sep),
-    ["Resultado (Sobras - Faltas)","","","","","", totalSobras - totalFaltas].join(sep),
+    ["Total Faltas","","","","","","", nb(-totalFaltas,2)].join(sep),
+    ["Total Sobras","","","","","","", nb(totalSobras,2)].join(sep),
+    ["Resultado (Sobras - Faltas)","","","","","","", nb(totalSobras - totalFaltas,2)].join(sep),
   ];
   _download("﻿"+rows.join("\n"), `divergencias_${prefixo}_${_hoje()}.csv`, "text/csv");
   toast("Excel exportado com sucesso", "success");
