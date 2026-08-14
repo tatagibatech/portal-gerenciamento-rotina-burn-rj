@@ -2421,6 +2421,22 @@ function exportarBaseErpExcel(){
     DIVERGENCIA_WMS:"Extra WMS", SOBRA_WMS:"Sobra WMS", SOBRA_WMS_OK:"Sobra WMS OK"
   };
 
+  // Número BR: ponto → vírgula para Excel reconhecer como numérico
+  const nb = (v, dec) => (v == null || v === "") ? "" : Number(v).toFixed(dec).replace(".", ",");
+
+  // Totais — soma apenas colunas numéricas, ignorando nulos
+  const soma  = key => dados.reduce((a, it) => a + (it[key] != null ? Number(it[key]) : 0), 0);
+  const somaC = key => { const vs = dados.filter(it => it[key] != null); return vs.length ? vs.reduce((a,it)=>a+Number(it[key]),0) : null; };
+
+  const totQtyErp = soma("qty_erp");
+  const totQtyRes = soma("qty_reservado");
+  const totValErp = soma("valor_erp");
+  const totC1     = somaC("c1");
+  const totC2     = somaC("c2");
+  const totC3     = somaC("c3");
+  const totDivQty = somaC("div_qty");
+  const totDivVal = somaC("div_val");
+
   const rows = [
     `BASE ERP — ${prefixo}`,
     "",
@@ -2429,15 +2445,28 @@ function exportarBaseErpExcel(){
       it.sku,
       it.armazem_wms || it.deposito_nome || it.deposito || "",
       it.descricao || "",
-      it.qty_erp ?? "",
-      it.qty_reservado ?? "",
-      it.preco_unit != null ? it.preco_unit : "",
-      it.valor_erp != null ? it.valor_erp : "",
-      it.c1 ?? "", it.c2 ?? "", it.c3 ?? "",
-      it.div_qty != null ? Math.round(it.div_qty * 100000) / 100000 : "",
-      it.div_val != null ? Math.round(it.div_val * 100) / 100 : "",
+      nb(it.qty_erp, 4),
+      nb(it.qty_reservado, 4),
+      it.preco_unit != null ? nb(it.preco_unit, 8) : "",
+      nb(it.valor_erp, 2),
+      it.c1 != null ? nb(it.c1, 4) : "",
+      it.c2 != null ? nb(it.c2, 4) : "",
+      it.c3 != null ? nb(it.c3, 4) : "",
+      it.div_qty != null ? nb(it.div_qty, 5) : "",
+      it.div_val != null ? nb(it.div_val, 2) : "",
       INV_LBL[it.status] || it.status || ""
-    ].join(sep))
+    ].join(sep)),
+    "",
+    ["TOTAL", "", `${dados.length} itens`,
+      nb(totQtyErp, 4), nb(totQtyRes, 4), "",
+      nb(totValErp, 2),
+      totC1 != null ? nb(totC1, 4) : "",
+      totC2 != null ? nb(totC2, 4) : "",
+      totC3 != null ? nb(totC3, 4) : "",
+      totDivQty != null ? nb(totDivQty, 5) : "",
+      totDivVal != null ? nb(totDivVal, 2) : "",
+      ""
+    ].join(sep)
   ];
   _download("﻿" + rows.join("\n"), `base_erp_${prefixo}_${_hoje()}.csv`, "text/csv;charset=utf-8");
   toast("Excel exportado com sucesso", "success");
