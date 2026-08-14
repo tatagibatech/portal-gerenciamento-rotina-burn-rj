@@ -2235,17 +2235,18 @@ function setInvSubtab(id){
 
 function _invStatusStyle(s){
   const m = {
-    PENDENTE:       ["#95A5A6","Pendente"],
-    C1_OK:          ["#22C55E","C1 OK"],
-    AGUARDA_C2:     ["#F59E0B","Aguarda C2"],
-    C2_OK:          ["#2980B9","C2 OK"],
-    AGUARDA_C3:     ["#E67E22","Aguarda C3"],
-    CONCLUIDO:      ["#1ABC9C","Concluído"],
-    DIVERGENCIA_WMS: ["#DC2626","Sobra WMS"],
-    SOBRA_WMS_OK:    ["#0891B2","Sobra WMS OK"],
-    FALTA_WMS:       ["#7C3AED","Falta WMS"],
+    PENDENTE:        ["#F59E0B","Pendente"],
+    FALTA_WMS:       ["#9CA3AF","Não Contado"],
+    C1_OK:           ["#22C55E","C1 OK"],
+    AGUARDA_C2:      ["#3B82F6","Aguarda C2"],
+    C2_OK:           ["#10B981","C2 OK"],
+    AGUARDA_C3:      ["#F97316","Aguarda C3"],
+    CONCLUIDO:       ["#6B7280","Concluído"],
+    SOBRA_WMS:       ["#7C3AED","Sobra WMS"],
+    DIVERGENCIA_WMS: ["#DC2626","Extra WMS"],
+    SOBRA_WMS_OK:    ["#8B5CF6","Sobra WMS OK"],
   };
-  return m[s] || ["#999","?"];
+  return m[s] || ["#999", s || "?"];
 }
 
 let _divSort  = { col: 'valor_abs', asc: false };
