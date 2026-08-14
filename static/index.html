@@ -766,12 +766,7 @@ button:disabled{opacity:.5;cursor:not-allowed}
       </div>
       <div style="overflow-x:auto">
         <table class="backlog-table">
-          <thead><tr>
-            <th>SKU</th><th>Depósito</th><th>Descrição</th><th>Qtd ERP</th><th>Reservado</th>
-            <th>Preço Unit</th><th>Valor ERP</th>
-            <th>C1</th><th>C2</th><th>C3</th>
-            <th>Div Qtd</th><th>Div R$</th><th>Status</th>
-          </tr></thead>
+          <thead id="tblBaseErpHead"><tr></tr></thead>
           <tbody id="tblBaseErpBody"></tbody>
         </table>
       </div>
@@ -1511,6 +1506,8 @@ let _painelDados   = null;
 let _finalizacoes  = {};
 let _invPagAtual = 1;
 let _pkErpPag    = 1;
+let _erpSortCol  = "qty_erp";   // coluna ativa de ordenação
+let _erpSortDir  = -1;          // -1 = desc, +1 = asc
 // _pkWmsPag substituído por _pkWmsPags {1,2,3} abaixo
 const INV_PG = 50;
 const PK_PG  = 50;
@@ -2035,6 +2032,29 @@ function renderContagensPainel(){
   renderContagensWms();
 }
 
+const _ERP_COLS = [
+  {key:"sku",           lbl:"SKU",        num:false},
+  {key:"deposito_nome", lbl:"Depósito",   num:false},
+  {key:"descricao",     lbl:"Descrição",  num:false},
+  {key:"qty_erp",       lbl:"Qtd ERP",    num:true},
+  {key:"qty_reservado", lbl:"Reservado",  num:true},
+  {key:"preco_unit",    lbl:"Preço Unit", num:true},
+  {key:"valor_erp",     lbl:"Valor ERP",  num:true},
+  {key:"c1",            lbl:"C1",         num:true},
+  {key:"c2",            lbl:"C2",         num:true},
+  {key:"c3",            lbl:"C3",         num:true},
+  {key:"div_qty",       lbl:"Div Qtd",    num:true},
+  {key:"div_val",       lbl:"Div R$",     num:true},
+  {key:"status",        lbl:"Status",     num:false},
+];
+
+function _pkErpSort(col){
+  if (_erpSortCol === col) _erpSortDir *= -1;
+  else { _erpSortCol = col; _erpSortDir = -1; }
+  _pkErpPag = 1;
+  renderBaseErp();
+}
+
 function renderBaseErp(){
   const pd = _painelDados;
   if (!pd) return;
@@ -2049,6 +2069,26 @@ function renderBaseErp(){
     (!fDep    || String(it.deposito_nome||"").toLowerCase().includes(fDep)) &&
     (!fStatus || it.status === fStatus)
   );
+
+  // Ordenação
+  const col = _ERP_COLS.find(c => c.key === _erpSortCol);
+  if (col) {
+    filtered.sort((a, b) => {
+      const av = col.num ? (a[col.key] ?? -Infinity) : String(a[col.key]||"").toLowerCase();
+      const bv = col.num ? (b[col.key] ?? -Infinity) : String(b[col.key]||"").toLowerCase();
+      return av < bv ? _erpSortDir : av > bv ? -_erpSortDir : 0;
+    });
+  }
+
+  // Cabeçalho dinâmico com indicadores de sort
+  const head = document.getElementById("tblBaseErpHead");
+  if (head) {
+    head.innerHTML = "<tr>" + _ERP_COLS.map(c => {
+      const ativo = c.key === _erpSortCol;
+      const ind = ativo ? (_erpSortDir === -1 ? " ▼" : " ▲") : " ⇅";
+      return `<th style="cursor:pointer;user-select:none${ativo?';color:#1437A0':''}" onclick="_pkErpSort('${c.key}')">${c.lbl}<span style="font-size:10px;opacity:${ativo?'1':'0.4'}">${ind}</span></th>`;
+    }).join("") + "</tr>";
+  }
 
   const total = Math.ceil(filtered.length / PK_PG) || 1;
   if (_pkErpPag > total) _pkErpPag = 1;
