@@ -1683,7 +1683,7 @@ function renderInventario(silencioso=false){
     const contados = itensErp.filter(i => i.c1 !== null && i.c1 !== undefined).length + divWms;
     const c1_ok    = itensErp.filter(i => i.status === "C1_OK").length;
     const concl    = itens.filter(i => ["C1_OK","C2_OK","CONCLUIDO","SOBRA_WMS_OK","SOBRA_WMS"].includes(i.status)).length;
-    const pend     = itens.filter(i => i.status === "PENDENTE" || i.status === "FALTA_WMS").length;
+    const pend     = itens.filter(i => i.status === "PENDENTE").length;
     const em_c2    = itens.filter(i => i.status === "AGUARDA_C2").length;
     const em_c3    = itens.filter(i => i.status === "AGUARDA_C3").length;
 
