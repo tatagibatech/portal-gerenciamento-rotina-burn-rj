@@ -7,6 +7,9 @@ wms_config_local.py
 
 # Cache de receiptkeys (dados operacionais, não versionado)
 receipt_keys_cache.json
+# Cache do painel ERP×WMS (dados operacionais em runtime, não versionado)
+painel_dados_cache.json
+pending_inv.json
 
 # Python
 __pycache__/

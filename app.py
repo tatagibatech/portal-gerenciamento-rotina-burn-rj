@@ -722,6 +722,35 @@ _inventario_final   = {}     # dados do relatório final (pdf gerado, timestamp)
 
 # Arquivo de persistência de pending (sobrevive a restarts de dyno no Render)
 _PENDING_FILE = os.path.join(os.path.dirname(__file__), "pending_inv.json")
+# Cache do painel ERP×WMS em disco — sobrevive a restarts do dyno Render
+_PAINEL_CACHE_FILE = os.path.join(os.path.dirname(__file__), "painel_dados_cache.json")
+
+
+def _painel_save():
+    """Persiste _painel_dados em arquivo para sobreviver a restarts."""
+    try:
+        with open(_PAINEL_CACHE_FILE, "w", encoding="utf-8") as f:
+            json.dump(_painel_dados, f, ensure_ascii=False)
+        log.info(f"Painel persistido em {_PAINEL_CACHE_FILE}")
+    except Exception as e:
+        log.warning(f"Não foi possível salvar cache do painel: {e}")
+
+
+def _painel_load():
+    """Restaura _painel_dados do cache em disco após restart."""
+    global _painel_dados
+    if not os.path.exists(_PAINEL_CACHE_FILE):
+        return
+    if _painel_dados:  # já carregado via POST, não sobrescreve
+        return
+    try:
+        data = json.loads(open(_PAINEL_CACHE_FILE, encoding="utf-8").read())
+        if data:
+            _painel_dados = data
+            log.info(f"Painel restaurado do cache: {data.get('total_skus',0)} SKUs, "
+                     f"gerado_em={data.get('gerado_em','?')}")
+    except Exception as e:
+        log.warning(f"Não foi possível restaurar cache do painel: {e}")
 
 
 def _pending_save():
@@ -796,6 +825,7 @@ def api_painel_upload():
         log.info(f"Painel recebido: {dados.get('total_skus',0)} SKUs ERP, "
                  f"{dados.get('lidos_end',0)}/{dados.get('total_end',0)} end. lidos, "
                  f"{dados.get('wms_linhas',0)} linhas WMS")
+        _painel_save()
         return jsonify({"ok": True, "total_skus": dados.get("total_skus", 0),
                         "total_end": dados.get("total_end", 0)})
     except Exception as e:
@@ -806,6 +836,7 @@ def api_painel_upload():
 @app.get("/api/inventario/painel")
 def api_painel():
     """Retorna os dados do painel ERP×WMS."""
+    _painel_load()  # tenta restaurar do cache se ainda vazio
     if not _painel_dados:
         return jsonify({"vazio": True, "msg": "Nenhum dado do painel carregado."}), 200
     resp = dict(_painel_dados)
