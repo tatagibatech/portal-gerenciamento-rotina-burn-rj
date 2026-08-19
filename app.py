@@ -1304,6 +1304,111 @@ def api_config_check():
     })
 
 
+@app.get("/api/debug-hoje")
+def api_debug_hoje():
+    """
+    Diagnóstico completo das ASNs de hoje: cache vs WMS (range scan + stages).
+    Roda no servidor Render, que tem acesso real ao WMS.
+    """
+    from receipt_collector import WMSClient, TIPO_ORDEM_PRODUCAO, STATUS_MAP
+    from collections import defaultdict
+
+    today_str = datetime.now(_BRT).date().isoformat()
+    state = collector.get_state()
+    receipts = state["receipts"]
+
+    # 1. ASNs de hoje no cache
+    hoje_cache = {
+        rk: {
+            "status": rec.get("status"),
+            "status_raw": rec.get("status_raw"),
+            "deposito": rec.get("deposito"),
+            "data_criacao": rec.get("data_criacao"),
+        }
+        for rk, rec in receipts.items()
+        if (rec.get("data_criacao") or "")[:10] == today_str
+    }
+
+    # 2. Max base e range scan de novas bases
+    bases_conhecidas = set()
+    for rk in receipts:
+        parts = rk.split(".")
+        if len(parts) >= 2 and parts[0].isdigit():
+            bases_conhecidas.add(int(parts[0]))
+
+    max_base = max(bases_conhecidas) if bases_conhecidas else 0
+    scan_start = max_base + 1
+    scan_end   = max_base + 80  # sonda 80 bases além do máximo conhecido
+
+    client = WMSClient()
+    scan_results = []
+    novas_descobertas = []
+    for base in range(scan_start, scan_end + 1):
+        for sub in range(1, 4):
+            rk = f"{base}.{sub}"
+            try:
+                r = client.get(f"advancedshipnotice/{rk}", timeout=4)
+                if r.status_code == 200:
+                    d = r.json()
+                    tp  = str(d.get("receipttype") or d.get("type") or "")
+                    add = str(d.get("adddate") or "")[:10]
+                    st  = str(d.get("status") or "")
+                    entry = {"rk": rk, "type": tp, "status": st, "adddate": add}
+                    scan_results.append(entry)
+                    if tp in TIPO_ORDEM_PRODUCAO and rk not in receipts:
+                        novas_descobertas.append(entry)
+                elif r.status_code == 404:
+                    break  # sem mais subs nessa base
+            except Exception:
+                break
+
+    # 3. Stage scan
+    stage_found = {}
+    all_stages = []
+    from receipt_collector import DEPOSITOS
+    for dep_info in DEPOSITOS.values():
+        all_stages.extend(dep_info.get("stages", []))
+
+    for loc in all_stages:
+        try:
+            items = client.get_inventory_stage(loc)
+            for item in items:
+                lt1 = (item.get("lottable01") or "").strip()
+                if lt1:
+                    stage_found[lt1] = loc
+        except Exception:
+            pass
+
+    novas_via_stage = {k: v for k, v in stage_found.items() if k not in receipts}
+
+    # Contagem por status
+    contagem_status = defaultdict(int)
+    for rec in hoje_cache.values():
+        contagem_status[rec["status"]] += 1
+
+    return jsonify({
+        "hoje": today_str,
+        "cache_hoje": {
+            "total": len(hoje_cache),
+            "por_status": dict(contagem_status),
+            "keys": sorted(hoje_cache.keys()),
+            "detalhe": hoje_cache,
+        },
+        "range_scan": {
+            "bases_escaneadas": f"{scan_start}-{scan_end}",
+            "max_base_conhecido": max_base,
+            "total_bases_conhecidas": len(bases_conhecidas),
+            "encontrados": scan_results,
+            "novas_tipo8_nao_indexadas": novas_descobertas,
+        },
+        "stage_scan": {
+            "total_em_stages": len(stage_found),
+            "novas_nao_indexadas": novas_via_stage,
+        },
+        "server_time": datetime.now(_BRT).strftime("%d/%m/%Y %H:%M:%S"),
+    })
+
+
 # ─────────────────────────────── Startup ─────────────────────────────────────
 
 if __name__ == "__main__":
