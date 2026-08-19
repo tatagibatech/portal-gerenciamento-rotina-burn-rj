@@ -950,10 +950,24 @@ class ReceiptCollector:
                         f"(exp={len(keys_exports)}, stg={len(keys_stages)}, cache={len(known_cache)})."
                     )
                 else:
-                    # Incremental: stages + mini range scan de novas bases tipo 8
+                    # Incremental: stages + query por data + mini range scan de novas bases tipo 8
                     keys_stages    = self._discover_from_stages()
                     new_via_stages = keys_stages - set(existing.keys())
                     type_map       = {k: "" for k in new_via_stages}
+
+                    # Query direta por adddate=hoje: garante que ASNs pendentes (status 0)
+                    # criadas hoje sejam descobertas mesmo sem passar pelo STG.
+                    try:
+                        asns_hoje = self._client.list_asn_by_date(today_str)
+                        for rec in asns_hoje:
+                            k = rec.get("receiptkey") or ""
+                            tp = str(rec.get("receipttype") or rec.get("type") or "").strip()
+                            if k and tp in TIPO_ORDEM_PRODUCAO:
+                                type_map[k] = str(rec.get("status") or "")
+                        log.info(f"list_asn_by_date({today_str}): {len(asns_hoje)} ASNs, "
+                                 f"{sum(1 for r in asns_hoje if str(r.get('receipttype') or r.get('type') or '').strip() in TIPO_ORDEM_PRODUCAO)} tipo 8.")
+                    except Exception as e:
+                        log.warning(f"list_asn_by_date erro: {e}")
 
                     # Mini range scan: detecta ASNs recém-criadas (incluindo status 0/novo).
                     # Sonda apenas bases ainda não indexadas além do máximo conhecido.
