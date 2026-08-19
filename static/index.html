@@ -587,7 +587,7 @@ button:disabled{opacity:.5;cursor:not-allowed}
     <div class="panel-title">
       Farol de Recebimento — Produto Acabado
       <span class="tag">LIVE</span>
-      <span style="font-size:9px;color:var(--muted);font-weight:400;margin-left:8px">v2026-08-19d</span>
+      <span style="font-size:9px;color:var(--muted);font-weight:400;margin-left:8px">v2026-08-19e</span>
     </div>
     <div class="panel-actions">
       <div class="date-filter">
@@ -1317,14 +1317,8 @@ function renderDepCard(dep, info, totalHoje){
       <div class="dep-paletes-badge">🔷 ${paletes} pal.</div>
     </div>
     <div class="dep-status-grid">
-      <div class="dep-status-col">
-        <div class="dep-status-col-hdr" style="color:#EF4444">Em Andamento</div>
-        ${colAtivo}
-      </div>
-      <div class="dep-status-col">
-        <div class="dep-status-col-hdr" style="color:#16A34A">Finalizado</div>
-        ${colFinal}
-      </div>
+      <div class="dep-status-col">${colAtivo}</div>
+      <div class="dep-status-col">${colFinal}</div>
     </div>
     ${totalizador}
   </div>`;
