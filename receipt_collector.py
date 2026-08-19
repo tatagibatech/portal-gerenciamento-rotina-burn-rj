@@ -954,8 +954,9 @@ class ReceiptCollector:
                     if known_bases:
                         max_base = max(known_bases)
                         # Bases completamente novas (fora do índice)
+                        # ASNs são criadas sequencialmente — escanear 30 à frente é suficiente
                         scan_ini = max(1, max_base - 5)
-                        scan_fim = max_base + 1001
+                        scan_fim = max_base + 31
                         bases_novas = [
                             b for b in range(scan_ini, scan_fim)
                             if b not in known_bases
@@ -963,12 +964,12 @@ class ReceiptCollector:
                         # Bases recentes já conhecidas: re-sonda para capturar
                         # sub-keys criados hoje em bases já indexadas (ex: 76491.15)
                         bases_recentes = sorted(
-                            [b for b in known_bases if b >= max_base - 800],
-                        )[-200:]  # últimas 200 bases conhecidas
+                            [b for b in known_bases if b >= max_base - 200],
+                        )[-30:]  # últimas 30 bases conhecidas
                         scan_list = bases_novas + bases_recentes
                         if scan_list:
                             scan_result = self._scan_bases_quick(
-                                scan_list, max_workers=15, timeout=4
+                                scan_list, max_workers=15, timeout=3
                             )
                             novel = scan_result - set(existing.keys())
                             if novel:
