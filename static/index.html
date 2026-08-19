@@ -30,6 +30,8 @@
   --recebido-bg:    rgba(34,197,94,.12);
   --fechado:        #6B7280;
   --fechado-bg:     rgba(107,114,128,.12);
+  --fech-div:       #F97316;
+  --fech-div-bg:    rgba(249,115,22,.12);
 
   /* Neutros */
   --bg:        #F0F4FF;
@@ -144,6 +146,8 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .scard.recebido .scard-num{color:var(--recebido)}
 .scard.fechado{border-left-color:var(--fechado)}
 .scard.fechado .scard-num{color:var(--fechado)}
+.scard.fechado_divergente{border-left-color:var(--fech-div)}
+.scard.fechado_divergente .scard-num{color:var(--fech-div)}
 .scard.paletes{border-left-color:var(--blue-light)}
 .scard.paletes .scard-num{color:var(--blue-light)}
 
@@ -215,6 +219,8 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .sb-recebido   .sb-count{color:var(--recebido)}
 .sb-fechado    .sb-label{color:var(--fechado)}
 .sb-fechado    .sb-count{color:var(--fechado)}
+.sb-fech-div   .sb-label{color:var(--fech-div)}
+.sb-fech-div   .sb-count{color:var(--fech-div)}
 
 .no-data-card{
   display:flex;align-items:center;justify-content:center;
@@ -292,6 +298,7 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .cb-emrec{background:var(--em-rec-bg);color:var(--em-rec)}
 .cb-rec{background:var(--recebido-bg);color:var(--recebido)}
 .cb-fec{background:var(--fechado-bg);color:var(--fechado)}
+.cb-fecdiv{background:var(--fech-div-bg);color:var(--fech-div)}
 .cb-zero{background:#F3F4F6;color:var(--muted)}
 
 /* ══ PAINEL ERP×WMS ══ */
@@ -586,11 +593,12 @@ button:disabled{opacity:.5;cursor:not-allowed}
             <th>No Recebimento</th>
             <th>Recebidos</th>
             <th>Fechados</th>
+            <th style="color:var(--fech-div)">Fech. c/ Diverg.</th>
             <th>Total Paletes</th>
           </tr>
         </thead>
         <tbody id="backlogBody">
-          <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px">Carregando...</td></tr>
+          <tr><td colspan="7" style="text-align:center;color:var(--muted);padding:20px">Carregando...</td></tr>
         </tbody>
         <tfoot id="backlogFoot"></tfoot>
       </table>
@@ -980,22 +988,25 @@ let _countdown    = 30;
 let _intervalo    = 30;
 
 const STATUS_LABELS = {
-  pendente:       "Pendente",
-  no_recebimento: "No Recebimento",
-  recebido:       "Recebido",
-  fechado:        "Fechado",
+  pendente:            "Pendente",
+  no_recebimento:      "No Recebimento",
+  recebido:            "Recebido",
+  fechado:             "Fechado",
+  fechado_divergente:  "Fech. c/ Diverg.",
 };
 const STATUS_COLORS = {
-  pendente:       "var(--pendente)",
-  no_recebimento: "var(--em-rec)",
-  recebido:       "var(--recebido)",
-  fechado:        "var(--fechado)",
+  pendente:            "var(--pendente)",
+  no_recebimento:      "var(--em-rec)",
+  recebido:            "var(--recebido)",
+  fechado:             "var(--fechado)",
+  fechado_divergente:  "var(--fech-div)",
 };
 const STATUS_CSS = {
-  pendente:       "sb-pendente",
-  no_recebimento: "sb-em-rec",
-  recebido:       "sb-recebido",
-  fechado:        "sb-fechado",
+  pendente:            "sb-pendente",
+  no_recebimento:      "sb-em-rec",
+  recebido:            "sb-recebido",
+  fechado:             "sb-fechado",
+  fechado_divergente:  "sb-fech-div",
 };
 
 /* ══════════════════════════════════════════════════════════════
@@ -1095,6 +1106,7 @@ function renderFarol(data){
   const emRecTotal = ((hoje.no_recebimento||{}).count||0) + ((backlog.no_recebimento||{}).count||0);
   const recHoje    = (hoje.recebido||{}).count||0;
   const fechHoje   = (hoje.fechado||{}).count||0;
+  const fechDivTotal = ((hoje.fechado_divergente||{}).count||0) + ((backlog.fechado_divergente||{}).count||0);
   const totalAtivo = pendTotal + emRecTotal;
   const palHoje    = totais.total_paletes_dia||0;
   const palFechAll = ((hoje.fechado||{}).paletes||0) + ((backlog.fechado||{}).paletes||0);
@@ -1128,6 +1140,11 @@ function renderFarol(data){
       <div class="scard-lbl">Fechados Hoje</div>
       <div class="scard-sub">${(hoje.fechado||{}).paletes||0} paletes</div>
     </div>
+    <div class="scard fechado_divergente">
+      <div class="scard-num">${fechDivTotal}</div>
+      <div class="scard-lbl">Fech. c/ Diverg.</div>
+      <div class="scard-sub">${_subAberto((hoje.fechado_divergente||{}).count||0,(backlog.fechado_divergente||{}).count||0)}</div>
+    </div>
     <div class="scard paletes">
       <div class="scard-num">${totalAtivo}</div>
       <div class="scard-lbl">Total Abertos</div>
@@ -1156,15 +1173,17 @@ function renderFarol(data){
 function renderDepCard(dep, info, totalHoje){
   const hoje  = info.hoje  || {};
   const nomes = {
-    pendente:"Pendente",no_recebimento:"No Recebimento",recebido:"Recebido",fechado:"Fechado"
+    pendente:"Pendente",no_recebimento:"No Recebimento",recebido:"Recebido",fechado:"Fechado",
+    fechado_divergente:"Fech. c/ Diverg."
   };
   const cssMap = {
-    pendente:"sb-pendente",no_recebimento:"sb-em-rec",recebido:"sb-recebido",fechado:"sb-fechado"
+    pendente:"sb-pendente",no_recebimento:"sb-em-rec",recebido:"sb-recebido",fechado:"sb-fechado",
+    fechado_divergente:"sb-fech-div"
   };
   const total = _countAll(hoje);
   const paletes = info.total_paletes_dia || 0;
 
-  const boxes = ["pendente","no_recebimento","recebido","fechado"].map(s => {
+  const boxes = ["pendente","no_recebimento","recebido","fechado","fechado_divergente"].map(s => {
     const cnt = (hoje[s]||{}).count || 0;
     const pal = (hoje[s]||{}).paletes || 0;
     const pct = total > 0 ? Math.round(cnt/total*100) : 0;
@@ -1180,11 +1199,13 @@ function renderDepCard(dep, info, totalHoje){
   const cntER   = (hoje["no_recebimento"]||{}).count || 0;
   const cntRec  = (hoje["recebido"]||{}).count || 0;
   const cntFec  = (hoje["fechado"]||{}).count || 0;
+  const cntFDiv = (hoje["fechado_divergente"]||{}).count || 0;
   const partes  = [];
   if (cntPend) partes.push(`<span class="tot-pend">${cntPend} pend.</span>`);
   if (cntER)   partes.push(`<span class="tot-er">${cntER} no rec.</span>`);
   if (cntRec)  partes.push(`<span class="tot-rec">${cntRec} rec.</span>`);
   if (cntFec)  partes.push(`<span class="tot-fec">${cntFec} fec.</span>`);
+  if (cntFDiv) partes.push(`<span style="color:var(--fech-div)">${cntFDiv} fec.div.</span>`);
   const totalizador = total > 0
     ? `<div class="dep-totalizador">${partes.join(" &bull; ")} &nbsp;|&nbsp; <strong>Total: ${total} ASNs</strong></div>`
     : "";
@@ -1208,15 +1229,14 @@ function renderBacklog(depositos){
   const tfoot = document.getElementById("backlogFoot");
   if (!depositos) { tbody.innerHTML = ""; tfoot.innerHTML = ""; return; }
 
-  const STATUS_BL = ["pendente","no_recebimento","recebido","fechado"];
-  let totPend = 0, totER = 0, totRec = 0, totFec = 0, totPal = 0;
+  const STATUS_BL = ["pendente","no_recebimento","recebido","fechado","fechado_divergente"];
+  let totPend = 0, totER = 0, totRec = 0, totFec = 0, totFDiv = 0, totPal = 0;
 
   const rows = Object.entries(depositos)
     .filter(([k]) => k !== "OUTROS")
     .sort(([a],[b]) => parseInt(a)-parseInt(b))
     .map(([dep, info]) => {
       const bl = info.backlog || {};
-      const tp = (bl.paletes||0) + STATUS_BL.reduce((s,st) => s + ((bl[st]||{}).paletes||0), 0);
       const totalPal = STATUS_BL.reduce((s,st) => s + ((bl[st]||{}).paletes||0), 0);
       const anyBl = STATUS_BL.some(st => ((bl[st]||{}).count||0) > 0);
       if (!anyBl) return "";
@@ -1224,6 +1244,7 @@ function renderBacklog(depositos){
       totER   += (bl.no_recebimento||{}).count||0;
       totRec  += (bl.recebido||{}).count||0;
       totFec  += (bl.fechado||{}).count||0;
+      totFDiv += (bl.fechado_divergente||{}).count||0;
       totPal  += totalPal;
       const blLabel = info.supplier_name || info.nome || dep;
       return `<tr>
@@ -1232,23 +1253,25 @@ function renderBacklog(depositos){
         <td>${countBadge(bl.no_recebimento,"emrec")}</td>
         <td>${countBadge(bl.recebido,"rec")}</td>
         <td>${countBadge(bl.fechado,"fec")}</td>
+        <td>${countBadge(bl.fechado_divergente,"fecdiv")}</td>
         <td><strong>${totalPal}</strong></td>
       </tr>`;
     }).filter(Boolean);
 
   if (rows.length) {
     tbody.innerHTML = rows.join("");
-    const totTotal = totPend + totER + totRec + totFec;
+    const totTotal = totPend + totER + totRec + totFec + totFDiv;
     tfoot.innerHTML = `<tr class="bl-total-row">
       <td><strong>TOTAL</strong></td>
       <td><span class="count-badge cb-pend">${totPend||"—"}</span></td>
       <td><span class="count-badge cb-emrec">${totER||"—"}</span></td>
       <td><span class="count-badge cb-rec">${totRec||"—"}</span></td>
       <td><span class="count-badge cb-fec">${totFec||"—"}</span></td>
+      <td><span class="count-badge cb-fecdiv">${totFDiv||"—"}</span></td>
       <td><strong>${totPal}</strong> &nbsp;<small style="color:var(--muted)">(${totTotal} ASNs)</small></td>
     </tr>`;
   } else {
-    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px">✓ Sem backlog nos dias anteriores</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:20px">✓ Sem backlog nos dias anteriores</td></tr>`;
     tfoot.innerHTML = "";
   }
 }
@@ -1256,7 +1279,8 @@ function renderBacklog(depositos){
 function countBadge(obj, cls){
   const n = (obj||{}).count || 0;
   if (n === 0) return `<span class="count-badge cb-zero">—</span>`;
-  return `<span class="count-badge cb-${cls}" onclick="abrirDetalhe('','${cls === 'pend' ? 'pendente' : cls === 'emrec' ? 'no_recebimento' : cls === 'rec' ? 'recebido' : 'fechado'}','backlog')" style="cursor:pointer">${n}</span>`;
+  const statusMap = {pend:'pendente',emrec:'no_recebimento',rec:'recebido',fec:'fechado',fecdiv:'fechado_divergente'};
+  return `<span class="count-badge cb-${cls}" onclick="abrirDetalhe('','${statusMap[cls]||cls}','backlog')" style="cursor:pointer">${n}</span>`;
 }
 
 function _countAll(obj){

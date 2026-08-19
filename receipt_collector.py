@@ -57,13 +57,14 @@ STATUS_MAP = {
 }
 
 STATUS_LABEL = {
-    "pendente":        "Pendente",
-    "no_recebimento":  "No Recebimento",
-    "recebido":        "Recebido",
-    "fechado":         "Fechado",
+    "pendente":           "Pendente",
+    "no_recebimento":     "No Recebimento",
+    "recebido":           "Recebido",
+    "fechado":            "Fechado",
+    "fechado_divergente": "Fech. c/ Divergência",
 }
 
-STATUS_ORDER = ["pendente", "no_recebimento", "recebido", "fechado", "cancelado"]
+STATUS_ORDER = ["pendente", "no_recebimento", "recebido", "fechado", "fechado_divergente", "cancelado"]
 
 _BRT = timezone(timedelta(hours=-3))
 HOJE = datetime.now(_BRT).date()
@@ -450,7 +451,12 @@ def _receipt_to_dict(receipt: dict, pack_cache: dict) -> dict:
     # 0=Pendente | 5=No Recebimento | 9=Recebido | 11=Fechado
     total_rec  = paletes["total_recebido"]
     if status_raw in ("11", "15"):
-        status_derivado = "fechado"
+        total_prev_q = paletes["total_previsto"]
+        total_rec_q  = paletes["total_recebido"]
+        if total_prev_q > 0 and abs(total_rec_q - total_prev_q) > 0.01:
+            status_derivado = "fechado_divergente"
+        else:
+            status_derivado = "fechado"
     elif status_raw == "20":
         status_derivado = "cancelado"
     elif status_raw in ("9", "21"):
