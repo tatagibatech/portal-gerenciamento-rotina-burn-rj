@@ -951,6 +951,7 @@ button:disabled{opacity:.5;cursor:not-allowed}
               <th>Qtd Prevista</th>
               <th>Qtd Recebida</th>
               <th>UOM</th>
+              <th>Local Destino</th>
               <th>Palete Fechado</th>
               <th>Fração</th>
               <th>Data Receb.</th>
@@ -1385,6 +1386,12 @@ function renderDetail(){
   // Sumário do modal
   const totalPrev    = _detalheItems.reduce((s,it) => s + (it.qty_previsto||0), 0);
   const totalRec     = _detalheItems.reduce((s,it) => s + (it.qty_recebido||0), 0);
+  const totalArm     = _detalheItems.reduce((s,it) => {
+    const tl = (it.toloc||"").toUpperCase();
+    return (tl.startsWith("001") || tl.startsWith("005") || tl.startsWith("BLOCADO"))
+      ? s + (it.qty_recebido||0) : s;
+  }, 0);
+  const pctArm = totalRec > 0 ? Math.round(totalArm / totalRec * 100) : 0;
   document.getElementById("modalSummary").innerHTML = `
     <div style="background:#EEF2FF;border-radius:6px;padding:6px 12px;font-size:11px">
       <strong>${filtered.length}</strong> linha(s) filtradas de <strong>${_detalheItems.length}</strong>
@@ -1395,12 +1402,16 @@ function renderDetail(){
     <div style="background:#EEF2FF;border-radius:6px;padding:6px 12px;font-size:11px">
       Qtd Recebida: <strong>${_fmt(totalRec)}</strong>
     </div>
+    <div style="background:#D1FAE5;color:#065F46;border-radius:6px;padding:6px 12px;font-size:11px;font-weight:600">
+      Armazenado (001/005/BLOCADO): <strong>${_fmt(totalArm)}</strong>
+      ${totalRec > 0 ? `<span style="font-weight:400;color:#047857"> · ${pctArm}% do recebido</span>` : ""}
+    </div>
   `;
 
   // Tabela
   const tbody = document.getElementById("detailBody");
   if (!page.length) {
-    tbody.innerHTML = `<tr><td colspan="13" class="empty-state"><div class="icon">📭</div>
+    tbody.innerHTML = `<tr><td colspan="14" class="empty-state"><div class="icon">📭</div>
       <h3>Nenhum dado encontrado</h3></td></tr>`;
   } else {
     tbody.innerHTML = page.map(it => {
@@ -1418,6 +1429,11 @@ function renderDetail(){
         else palFra = 1;
       }
       const stColor = STATUS_COLORS[it.status] || "var(--muted)";
+      const tl = (it.toloc||"").toUpperCase();
+      const isArm = tl.startsWith("001") || tl.startsWith("005") || tl.startsWith("BLOCADO");
+      const tolocCell = it.toloc
+        ? `<span style="font-family:monospace;font-size:11px;${isArm ? 'color:#065F46;font-weight:700' : 'color:var(--muted)'}">${it.toloc}</span>`
+        : '<span style="color:var(--muted)">—</span>';
       return `<tr>
         <td class="td-sku">${it.receiptkey||"—"}</td>
         <td class="td-sku">${it.sku||"—"}</td>
@@ -1426,6 +1442,7 @@ function renderDetail(){
         <td class="td-qty">${_fmt(it.qty_previsto)}</td>
         <td class="td-qty"><strong>${_fmt(it.qty_recebido)}</strong></td>
         <td>${it.uom||"—"}</td>
+        <td>${tolocCell}</td>
         <td class="td-palet">${palInt > 0 ? `<span class="badge-int">🔷 ${palInt} fechado${palInt>1?'s':''}</span>` : '<span class="badge-zero">—</span>'}</td>
         <td class="td-palet">${palFra > 0 ? '<span class="badge-fra">◻ fração</span>' : '<span class="badge-zero">—</span>'}</td>
         <td>${it.data_receb||it.data_criacao||"—"}</td>
