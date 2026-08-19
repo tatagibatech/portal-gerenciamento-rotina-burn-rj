@@ -1278,14 +1278,16 @@ function renderDepCard(dep, info, totalHoje){
   const cntRec  = (hoje["recebido"]||{}).count || 0;
   const cntFec  = (hoje["fechado"]||{}).count || 0;
   const cntFDiv = (hoje["fechado_divergente"]||{}).count || 0;
+  const armQty  = info.total_armazenado || 0;
   const partes  = [];
   if (cntPend) partes.push(`<span class="tot-pend">${cntPend} pend.</span>`);
   if (cntER)   partes.push(`<span class="tot-er">${cntER} no rec.</span>`);
   if (cntRec)  partes.push(`<span class="tot-rec">${cntRec} rec.</span>`);
   if (cntFec)  partes.push(`<span class="tot-fec">${cntFec} fec.</span>`);
   if (cntFDiv) partes.push(`<span style="color:var(--fech-div)">${cntFDiv} fec.div.</span>`);
+  if (armQty)  partes.push(`<span style="color:#16A34A">📦 ${_fmt(armQty)} arm.</span>`);
   const totalizador = total > 0
-    ? `<div class="dep-totalizador">${partes.join(" &bull; ")} &nbsp;|&nbsp; <strong>Total: ${total} ASNs</strong></div>`
+    ? `<div class="dep-totalizador">${partes.join(" &bull; ")} &nbsp;|&nbsp; <strong>Total hoje: ${total} ASNs</strong></div>`
     : "";
 
   const depLabel = info.supplier_name || info.nome || dep;
