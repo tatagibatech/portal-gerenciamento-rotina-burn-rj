@@ -701,41 +701,95 @@ def api_bulk_import():
         return jsonify({"erro": str(e)}), 500
 
 
+_webhook_last_body: dict = {}   # último payload recebido — para diagnóstico
+
+
+def _extrair_receiptkey(body: dict) -> str:
+    """
+    Tenta extrair o receiptkey de múltiplos formatos possíveis de payload:
+      1. JSON plano do WMS  { "receiptkey": "..." }
+      2. BOD SyncAdvanceShipNotice  DataArea.AdvanceShipNotice[0].AdvanceShipNoticeHeader.ID.value
+      3. Campos alternativos de referência externa (externreceiptkey, DocumentID, etc.)
+    """
+    if not body:
+        return ""
+
+    # 1. JSON plano do WMS (chave direta)
+    for k in ("receiptkey", "ReceiptKey", "receiptKey", "externreceiptkey", "ExternReceiptKey"):
+        v = str(body.get(k) or "").strip()
+        if v:
+            return v
+
+    # 2. BOD SyncAdvanceShipNotice — DataArea.AdvanceShipNotice[].AdvanceShipNoticeHeader.ID
+    try:
+        data_area = body.get("DataArea") or {}
+        asns = data_area.get("AdvanceShipNotice") or []
+        if isinstance(asns, dict):
+            asns = [asns]
+        for asn in asns:
+            hdr = asn.get("AdvanceShipNoticeHeader") or {}
+            # ID principal
+            v = (hdr.get("ID") or {}).get("value", "")
+            if v:
+                return str(v).strip()
+            # Referência de documento (externreceiptkey)
+            doc_ref = hdr.get("DocumentReference") or {}
+            v = (doc_ref.get("DocumentID") or {}).get("value", "")
+            if v:
+                return str(v).strip()
+    except Exception:
+        pass
+
+    # 3. Qualquer chave que contenha "receiptkey" (case-insensitive)
+    for k, v in body.items():
+        if "receiptkey" in k.lower() and v:
+            return str(v).strip()
+
+    return ""
+
+
 @app.post("/api/webhook-asn")
 def api_webhook_asn():
     """
-    Webhook para receber notificações do ION DataFlow AdvanceShipNotice.
-
-    O ION DataFlow DataGatewayPRD_AdvanceShipNotice dispara quando o WMS envia
-    um SyncAdvanceShipNotice (criação ou fechamento de ASN), chama a API WMS para
-    obter o JSON completo da ASN e faz POST aqui com esse JSON no body.
-
-    Basta configurar o ConnectionPoint DataGatewayPRD no ION Desk apontando para:
-      https://painel-burn-rj.onrender.com/api/webhook-asn
-
-    Para receber criações (além de fechamentos), remova o filtro Code=Canceled/Closed
-    no DataFlow ou crie um DataFlow paralelo com actionCode=Add sem filtro de status.
+    Webhook para receber notificações do ION DataFlow SyncAdvanceShipNotice.
+    Aceita JSON plano do WMS e formato BOD SyncAdvanceShipNotice.
+    Sempre retorna 200 para evitar retries do DataFlow.
     """
+    global _webhook_last_body
     try:
+        raw = request.get_data(as_text=True)
         body = request.get_json(force=True, silent=True) or {}
-        receiptkey = (
-            body.get("receiptkey") or
-            body.get("ReceiptKey") or
-            body.get("receiptKey") or
-            ""
-        ).strip()
+        _webhook_last_body = {
+            "ts":      datetime.now(_BRT).strftime("%d/%m/%Y %H:%M:%S"),
+            "headers": dict(request.headers),
+            "body":    body,
+            "raw":     raw[:2000],
+        }
+        log.info(f"webhook-asn recebido: {raw[:500]}")
+
+        receiptkey = _extrair_receiptkey(body)
         if not receiptkey:
-            log.warning(f"webhook-asn recebido sem receiptkey: {str(body)[:200]}")
-            return jsonify({"ok": False, "msg": "receiptkey ausente no body"}), 400
+            log.warning(f"webhook-asn: não foi possível extrair receiptkey do payload")
+            # Retorna 200 mesmo assim para não gerar erro no DataFlow
+            return jsonify({"ok": False, "msg": "receiptkey não encontrado no payload", "received_keys": list(body.keys())})
 
         rec = collector.fetch_and_store(receiptkey)
         if rec:
-            log.info(f"webhook-asn: ASN {receiptkey} indexada via DataFlow (dep={rec.get('deposito')}, status={rec.get('status')}).")
+            log.info(f"webhook-asn: ASN {receiptkey} indexada (dep={rec.get('deposito')}, status={rec.get('status')}).")
             return jsonify({"ok": True, "receiptkey": receiptkey, "deposito": rec.get("deposito"), "status": rec.get("status")})
-        return jsonify({"ok": False, "msg": f"ASN {receiptkey} não encontrada no WMS"}), 404
+
+        log.warning(f"webhook-asn: ASN {receiptkey} não encontrada no WMS")
+        return jsonify({"ok": False, "msg": f"ASN {receiptkey} não encontrada no WMS"})
+
     except Exception as e:
         log.error(f"Erro em /api/webhook-asn: {e}")
-        return jsonify({"erro": str(e)}), 500
+        return jsonify({"erro": str(e)})   # 200 mesmo em exceção
+
+
+@app.get("/api/webhook-debug")
+def api_webhook_debug():
+    """Retorna o último payload recebido em /api/webhook-asn — para diagnóstico do DataFlow."""
+    return jsonify(_webhook_last_body or {"msg": "Nenhum payload recebido ainda"})
 
 
 # ─────────────────────────────── Inventário ──────────────────────────────────
