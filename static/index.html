@@ -244,6 +244,8 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .sb-pct{font-size:10px;font-weight:600}
 .sb-paletes{font-size:10px;color:var(--muted)}
 
+.sb-armazenado .sb-label{color:#16A34A}
+.sb-armazenado .sb-count{color:#16A34A;font-size:18px}
 .sb-pendente   .sb-label{color:var(--pendente)}
 .sb-pendente   .sb-count{color:var(--pendente)}
 .sb-em-rec     .sb-label{color:var(--em-rec)}
@@ -585,7 +587,7 @@ button:disabled{opacity:.5;cursor:not-allowed}
     <div class="panel-title">
       Farol de Recebimento — Produto Acabado
       <span class="tag">LIVE</span>
-      <span style="font-size:9px;color:var(--muted);font-weight:400;margin-left:8px">v2026-08-19c</span>
+      <span style="font-size:9px;color:var(--muted);font-weight:400;margin-left:8px">v2026-08-19d</span>
     </div>
     <div class="panel-actions">
       <div class="date-filter">
@@ -1280,7 +1282,13 @@ function renderDepCard(dep, info, totalHoje){
   }
 
   const colAtivo = ["pendente","no_recebimento","fechado_divergente"].map(_box).join("");
-  const colFinal = ["recebido","fechado"].map(_box).join("");
+  const armBox = `<div class="status-box sb-armazenado">
+    <div class="sb-label">Armazenado</div>
+    <div class="sb-count">${_fmt(armQty)}</div>
+    <div class="sb-pct">&nbsp;</div>
+    <div class="sb-paletes">locais 001 / 005 / BLOCADO</div>
+  </div>`;
+  const colFinal = ["recebido","fechado"].map(_box).join("") + armBox;
 
   const cntPend = (hoje["pendente"]||{}).count || 0;
   const cntER   = (hoje["no_recebimento"]||{}).count || 0;
