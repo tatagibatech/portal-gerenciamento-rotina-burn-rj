@@ -1228,6 +1228,7 @@ class ReceiptCollector:
                 "hoje": {s: {"count": 0, "paletes": 0, "receiptkeys": []} for s in STATUS_ORDER},
                 "backlog": {s: {"count": 0, "paletes": 0, "receiptkeys": []} for s in STATUS_ORDER},
                 "total_paletes_dia": 0,
+                "total_armazenado":  0,
             }
 
         # SEM depósito identificado
@@ -1239,6 +1240,7 @@ class ReceiptCollector:
             "hoje":   {s: {"count": 0, "paletes": 0, "receiptkeys": []} for s in STATUS_ORDER},
             "backlog": {s: {"count": 0, "paletes": 0, "receiptkeys": []} for s in STATUS_ORDER},
             "total_paletes_dia": 0,
+            "total_armazenado":  0,
         }
 
         for rk, rec in receipts.items():
@@ -1269,12 +1271,14 @@ class ReceiptCollector:
 
             if is_hoje:
                 resultado[dep]["total_paletes_dia"] += paletes
+                resultado[dep]["total_armazenado"]  += rec["paletes"].get("qty_armazenada", 0)
 
         # Totais globais
         totais = {
             "hoje":   {s: {"count": 0, "paletes": 0} for s in STATUS_ORDER},
             "backlog": {s: {"count": 0, "paletes": 0} for s in STATUS_ORDER},
             "total_paletes_dia": 0,
+            "total_armazenado":  0,
             "total_receipts": len(receipts),
         }
         for dep_data in resultado.values():
@@ -1283,6 +1287,7 @@ class ReceiptCollector:
                     totais[bucket][s]["count"]   += dep_data[bucket][s]["count"]
                     totais[bucket][s]["paletes"]  += dep_data[bucket][s]["paletes"]
             totais["total_paletes_dia"] += dep_data["total_paletes_dia"]
+            totais["total_armazenado"]  += dep_data.get("total_armazenado", 0)
 
         return {
             "depositos":  resultado,
