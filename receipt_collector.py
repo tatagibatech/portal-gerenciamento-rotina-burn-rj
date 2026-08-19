@@ -168,6 +168,27 @@ class WMSClient:
             return r.json()
         return []
 
+    def get_inventory_by_receipt(self, receiptkey: str, page_size: int = 500) -> list:
+        """
+        Busca saldo de inventário vinculado a uma ASN.
+        Tenta lottable01 (que no WMS BURN contém o receiptkey) e depois receiptkey direto.
+        Retorna lista de registros de inventário.
+        """
+        for param in ("lottable01", "receiptkey"):
+            try:
+                r = self.post(
+                    "inventorybalance/showinventorybalancelist",
+                    params={"recordcount": page_size, param: receiptkey, "owner": "BURN"},
+                    timeout=30,
+                )
+                if r.status_code == 200:
+                    data = r.json()
+                    if isinstance(data, list) and data:
+                        return data
+            except Exception:
+                pass
+        return []
+
     def get_pack(self, packkey):
         r = self.get(f"packs/{packkey}", timeout=20)
         if r.status_code == 200:
@@ -936,6 +957,24 @@ class ReceiptCollector:
             # ── Descoberta de ASNs ─────────────────────────────────────────────
             type_map = self._client.list_asn_by_type(receipttype="8")  # 405 → {}
 
+            # Sempre consulta hoje por data: garante ASNs recém-criadas (status 0)
+            # que podem não aparecer em list_asn_by_type por paginação ou delay de índice
+            try:
+                asns_hoje_list = self._client.list_asn_by_date(today_str)
+                novos_hoje = 0
+                for rec in asns_hoje_list:
+                    k  = rec.get("receiptkey") or ""
+                    tp = str(rec.get("receipttype") or rec.get("type") or "").strip()
+                    if k and tp in TIPO_ORDEM_PRODUCAO and k not in type_map:
+                        type_map[k] = str(rec.get("status") or "")
+                        novos_hoje += 1
+                log.info(
+                    f"list_asn_by_date({today_str}): {len(asns_hoje_list)} total WMS, "
+                    f"{novos_hoje} novas tipo 8 adicionadas ao type_map."
+                )
+            except Exception as e:
+                log.warning(f"list_asn_by_date (top-level) erro: {e}")
+
             if not type_map:
                 if startup:
                     # Bootstrap: usa todos os mecanismos disponíveis
@@ -954,20 +993,6 @@ class ReceiptCollector:
                     keys_stages    = self._discover_from_stages()
                     new_via_stages = keys_stages - set(existing.keys())
                     type_map       = {k: "" for k in new_via_stages}
-
-                    # Query direta por adddate=hoje: garante que ASNs pendentes (status 0)
-                    # criadas hoje sejam descobertas mesmo sem passar pelo STG.
-                    try:
-                        asns_hoje = self._client.list_asn_by_date(today_str)
-                        for rec in asns_hoje:
-                            k = rec.get("receiptkey") or ""
-                            tp = str(rec.get("receipttype") or rec.get("type") or "").strip()
-                            if k and tp in TIPO_ORDEM_PRODUCAO:
-                                type_map[k] = str(rec.get("status") or "")
-                        log.info(f"list_asn_by_date({today_str}): {len(asns_hoje)} ASNs, "
-                                 f"{sum(1 for r in asns_hoje if str(r.get('receipttype') or r.get('type') or '').strip() in TIPO_ORDEM_PRODUCAO)} tipo 8.")
-                    except Exception as e:
-                        log.warning(f"list_asn_by_date erro: {e}")
 
                     # Mini range scan: detecta ASNs recém-criadas (incluindo status 0/novo).
                     # Sonda apenas bases ainda não indexadas além do máximo conhecido.
@@ -1071,6 +1096,32 @@ class ReceiptCollector:
                     rk, rec = fut.result()
                     if rec:
                         updated[rk] = rec
+
+            # ── Saldo de inventário: armazenado hoje nas áreas de logística ──────
+            _LOCS_ARM = ("001", "005", "BLOCADO")
+            rks_para_inv = [
+                rk for rk, rec in updated.items()
+                if (rec.get("data_criacao") or "")[:10] == today_str
+                and rec.get("status_raw", "") in ("9", "11", "15", "21")
+            ]
+            if rks_para_inv:
+                log.info(f"Consultando saldo inventário para {len(rks_para_inv)} ASNs recebidas hoje...")
+                for rk in rks_para_inv:
+                    try:
+                        inv = self._client.get_inventory_by_receipt(rk)
+                        if inv:
+                            qty_arm = round(sum(
+                                float(item.get("qty") or item.get("qtyonhand") or 0)
+                                for item in inv
+                                if any(
+                                    (item.get("loc") or "").upper().startswith(p)
+                                    for p in _LOCS_ARM
+                                )
+                            ), 2)
+                            updated[rk]["paletes"]["qty_armazenada"] = qty_arm
+                            log.debug(f"Inv {rk}: {len(inv)} registros, {qty_arm} em 001/005/BLOCADO")
+                    except Exception as e:
+                        log.debug(f"get_inventory_by_receipt({rk}): {e}")
 
             # ── Atualiza estado ─────────────────────────────────────────────────
             with self._lock:

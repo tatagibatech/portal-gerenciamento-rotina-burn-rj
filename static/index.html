@@ -580,6 +580,7 @@ button:disabled{opacity:.5;cursor:not-allowed}
     <div class="panel-title">
       Farol de Recebimento — Produto Acabado
       <span class="tag">LIVE</span>
+      <span style="font-size:9px;color:var(--muted);font-weight:400;margin-left:8px">v2026-08-19b</span>
     </div>
     <div class="panel-actions">
       <div class="date-filter">
@@ -1186,17 +1187,17 @@ function renderFarol(data){
     <div class="sum-group sum-group--ativo">
       <div class="sum-group-label" style="color:#EF4444">Em Andamento</div>
       <div class="sum-group-cards">
-        <div class="scard pendente">
+        <div class="scard pendente" style="cursor:pointer" onclick="abrirDetalhe('','pendente','hoje')">
           <div class="scard-num">${pendHoje}</div>
           <div class="scard-lbl">Pendente</div>
           <div class="scard-sub">${pendHoje === 0 ? 'nenhum' : pendHoje + ' ASN(s)'}</div>
         </div>
-        <div class="scard no_recebimento">
+        <div class="scard no_recebimento" style="cursor:pointer" onclick="abrirDetalhe('','no_recebimento','hoje')">
           <div class="scard-num">${emRecHoje}</div>
           <div class="scard-lbl">No Recebimento</div>
           <div class="scard-sub">${(hoje.no_recebimento||{}).paletes||0} pal.</div>
         </div>
-        <div class="scard fechado_divergente">
+        <div class="scard fechado_divergente" style="cursor:pointer" onclick="abrirDetalhe('','fechado_divergente','hoje')">
           <div class="scard-num">${fechDivHoje}</div>
           <div class="scard-lbl">Fech. c/ Diverg.</div>
           <div class="scard-sub">${fechDivHoje === 0 ? 'nenhum' : fechDivHoje + ' ASN(s)'}</div>
@@ -1206,24 +1207,24 @@ function renderFarol(data){
     <div class="sum-group sum-group--finalizado">
       <div class="sum-group-label" style="color:#16A34A">Finalizado</div>
       <div class="sum-group-cards">
-        <div class="scard recebido">
+        <div class="scard recebido" style="cursor:pointer" onclick="abrirDetalhe('','recebido','hoje')">
           <div class="scard-num">${recHoje}</div>
           <div class="scard-lbl">Recebido</div>
           <div class="scard-sub">${(hoje.recebido||{}).paletes||0} pal.</div>
         </div>
-        <div class="scard fechado">
+        <div class="scard fechado" style="cursor:pointer" onclick="abrirDetalhe('','fechado','hoje')">
           <div class="scard-num">${fechHoje}</div>
           <div class="scard-lbl">Fechado</div>
           <div class="scard-sub">${(hoje.fechado||{}).paletes||0} pal.</div>
         </div>
-        <div class="scard armazenado">
+        <div class="scard armazenado" style="cursor:pointer" onclick="abrirDetalhe('','recebido','hoje')">
           <div class="scard-num">${_fmt(totalArm)}</div>
           <div class="scard-lbl">Armazenado</div>
           <div class="scard-sub">001/005/BLOCADO${palHoje > 0 ? ' · ' + pctArm + '%' : ''}</div>
         </div>
       </div>
     </div>
-    <div class="sum-total">
+    <div class="sum-total" style="cursor:pointer" onclick="abrirDetalhe('','','hoje')">
       <div class="sum-total-num">${totalHojeAll}</div>
       <div class="sum-total-lbl">Total<br>Hoje</div>
       <div style="font-size:9px;color:var(--muted);margin-top:4px">${palHoje} pal.</div>
