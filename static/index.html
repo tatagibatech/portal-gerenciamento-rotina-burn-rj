@@ -69,6 +69,7 @@ header{
 .live-dot{width:8px;height:8px;border-radius:50%;background:#4ADE80;
   box-shadow:0 0 6px #4ADE80;animation:pulse-dot 1.5s ease-in-out infinite}
 @keyframes pulse-dot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.6;transform:scale(.85)}}
+@keyframes pulse-green{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(22,163,74,.5)}50%{opacity:.8;box-shadow:0 0 0 4px rgba(22,163,74,0)}}
 
 /* ── NAV ── */
 nav{
@@ -560,10 +561,14 @@ button:disabled{opacity:.5;cursor:not-allowed}
   </div>
 
   <!-- última atualização -->
-  <div style="font-size:11px;color:var(--muted);margin-bottom:14px">
-    Última atualização: <strong id="ultimaAtualizacao">—</strong>
-    &nbsp;|&nbsp; Próxima em <strong id="countdownLabel">30s</strong>
-    &nbsp;|&nbsp; <span id="totalReceipts">—</span> recebimentos carregados
+  <div style="font-size:11px;color:var(--muted);margin-bottom:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <span id="liveIndicator" style="display:inline-flex;align-items:center;gap:4px;color:#16A34A;font-weight:700">
+      <span style="width:7px;height:7px;border-radius:50%;background:#16A34A;display:inline-block;animation:pulse-green 1.4s ease-in-out infinite"></span>
+      AO VIVO
+    </span>
+    <span>Última atualização: <strong id="ultimaAtualizacao">—</strong></span>
+    <span id="totalReceipts">—</span> recebimentos carregados
+    <span id="countdownLabel" style="display:none"></span>
   </div>
 
   <!-- SUMMARY CARDS -->
@@ -1045,14 +1050,30 @@ async function carregarFarol() {
 
 function resetContagem(){
   _countdown = _intervalo;
-  document.getElementById("countdownLabel").textContent = _countdown + "s";
 }
 
+// ── SSE: atualização em tempo real ──────────────────────────────────────────
+(function _conectarSSE() {
+  const src = new EventSource("/api/stream");
+  src.onopen = () => {
+    const ind = document.getElementById("liveIndicator");
+    if (ind) ind.style.color = "#16A34A";
+  };
+  src.onmessage = () => {
+    carregarFarol();
+    resetContagem();
+  };
+  src.onerror = () => {
+    // SSE perdeu conexão — indicador fica amarelo; browser reconecta automaticamente
+    const ind = document.getElementById("liveIndicator");
+    if (ind) ind.style.color = "#CA8A04";
+  };
+})();
+
+// Fallback: garante refresh a cada 60s mesmo se o SSE travar
 setInterval(() => {
   _countdown--;
-  const el = document.getElementById("countdownLabel");
-  if (el) el.textContent = _countdown > 0 ? _countdown + "s" : "atualizando...";
-  if (_countdown <= 0) carregarFarol();
+  if (_countdown <= 0) { carregarFarol(); resetContagem(); }
 }, 1000);
 
 // Auto-refresh do inventário a cada 60s (apenas quando a aba estiver visível)
@@ -1101,35 +1122,26 @@ function renderFarol(data){
     lbl.textContent = "Conectado";
   }
 
-  // Summary cards — abertos = hoje + backlog para statuses ativos; fechado/recebido = só hoje
-  const backlog = totais.backlog || {};
-  const pendTotal  = ((hoje.pendente||{}).count||0)       + ((backlog.pendente||{}).count||0);
-  const emRecTotal = ((hoje.no_recebimento||{}).count||0) + ((backlog.no_recebimento||{}).count||0);
+  // Summary cards — exclusivamente ASNs de hoje
+  const pendHoje   = (hoje.pendente||{}).count||0;
+  const emRecHoje  = (hoje.no_recebimento||{}).count||0;
   const recHoje    = (hoje.recebido||{}).count||0;
   const fechHoje   = (hoje.fechado||{}).count||0;
-  const fechDivTotal = ((hoje.fechado_divergente||{}).count||0) + ((backlog.fechado_divergente||{}).count||0);
-  const totalAtivo = pendTotal + emRecTotal;
+  const fechDivHoje= (hoje.fechado_divergente||{}).count||0;
+  const totalHojeAll = pendHoje + emRecHoje + recHoje + fechHoje + fechDivHoje;
   const palHoje    = totais.total_paletes_dia||0;
-  const palFechAll = ((hoje.fechado||{}).paletes||0) + ((backlog.fechado||{}).paletes||0);
-
-  function _subAberto(hojeCount, bkCount) {
-    if (hojeCount > 0 && bkCount > 0) return `${hojeCount} hoje · ${bkCount} backlog`;
-    if (hojeCount > 0) return `${hojeCount} hoje`;
-    if (bkCount > 0) return `${bkCount} do backlog`;
-    return 'nenhum';
-  }
 
   const sc = document.getElementById("summaryCards");
   sc.innerHTML = `
     <div class="scard pendente">
-      <div class="scard-num">${pendTotal}</div>
-      <div class="scard-lbl">Pendentes</div>
-      <div class="scard-sub">${_subAberto((hoje.pendente||{}).count||0,(backlog.pendente||{}).count||0)}</div>
+      <div class="scard-num">${pendHoje}</div>
+      <div class="scard-lbl">Pendentes Hoje</div>
+      <div class="scard-sub">${pendHoje === 0 ? 'nenhum' : pendHoje + ' ASN(s)'}</div>
     </div>
     <div class="scard no_recebimento">
-      <div class="scard-num">${emRecTotal}</div>
+      <div class="scard-num">${emRecHoje}</div>
       <div class="scard-lbl">No Recebimento</div>
-      <div class="scard-sub">${_subAberto((hoje.no_recebimento||{}).count||0,(backlog.no_recebimento||{}).count||0)}</div>
+      <div class="scard-sub">${(hoje.no_recebimento||{}).paletes||0} paletes</div>
     </div>
     <div class="scard recebido">
       <div class="scard-num">${recHoje}</div>
@@ -1142,14 +1154,14 @@ function renderFarol(data){
       <div class="scard-sub">${(hoje.fechado||{}).paletes||0} paletes</div>
     </div>
     <div class="scard fechado_divergente">
-      <div class="scard-num">${fechDivTotal}</div>
+      <div class="scard-num">${fechDivHoje}</div>
       <div class="scard-lbl">Fech. c/ Diverg.</div>
-      <div class="scard-sub">${_subAberto((hoje.fechado_divergente||{}).count||0,(backlog.fechado_divergente||{}).count||0)}</div>
+      <div class="scard-sub">${fechDivHoje === 0 ? 'nenhum' : fechDivHoje + ' ASN(s)'}</div>
     </div>
     <div class="scard paletes">
-      <div class="scard-num">${totalAtivo}</div>
-      <div class="scard-lbl">Total Abertos</div>
-      <div class="scard-sub">${palHoje} pal. hoje · ${palFechAll} pal. fechados</div>
+      <div class="scard-num">${totalHojeAll}</div>
+      <div class="scard-lbl">Total Hoje</div>
+      <div class="scard-sub">${palHoje} paletes no dia</div>
     </div>
   `;
 

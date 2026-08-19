@@ -513,6 +513,33 @@ def api_status():
     })
 
 
+@app.get("/api/stream")
+def api_stream():
+    """SSE — empurra evento para o browser sempre que o coletor atualiza dados."""
+    def _generate():
+        last_ts = None
+        # keepalive: comenta vazia a cada 15s para não quebrar proxies/Render
+        idle = 0
+        while True:
+            state = collector.get_state()
+            ts = state.get("ultima_atualizacao") or ""
+            if ts != last_ts:
+                last_ts = ts
+                idle = 0
+                yield f"data: {ts}\n\n"
+            else:
+                idle += 1
+                if idle >= 5:       # 5 × 3s = 15s sem mudança → keepalive
+                    idle = 0
+                    yield ": keepalive\n\n"
+            time.sleep(3)
+    return Response(
+        _generate(),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
 @app.get("/api/debug-wms-list")
 def api_debug_wms_list():
     """Testa métodos de listagem de ASNs — descobre qual endpoint funciona."""
