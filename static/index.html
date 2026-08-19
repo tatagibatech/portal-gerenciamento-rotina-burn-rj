@@ -221,7 +221,12 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .tot-fec{color:rgba(255,255,255,.55)}
 
 /* Status boxes dentro do card */
-.dep-status-grid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--border)}
+.dep-status-grid{display:flex;gap:1px;background:var(--border)}
+.dep-status-col{display:flex;flex-direction:column;flex:1;gap:1px;background:var(--border)}
+.dep-status-col-hdr{
+  background:var(--surface);padding:4px 14px 3px;
+  font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.8px
+}
 .status-box{
   background:var(--surface);padding:12px 14px;cursor:pointer;
   transition:background .12s;display:flex;flex-direction:column;gap:4px;
@@ -580,7 +585,7 @@ button:disabled{opacity:.5;cursor:not-allowed}
     <div class="panel-title">
       Farol de Recebimento — Produto Acabado
       <span class="tag">LIVE</span>
-      <span style="font-size:9px;color:var(--muted);font-weight:400;margin-left:8px">v2026-08-19b</span>
+      <span style="font-size:9px;color:var(--muted);font-weight:400;margin-left:8px">v2026-08-19c</span>
     </div>
     <div class="panel-actions">
       <div class="date-filter">
@@ -1262,7 +1267,7 @@ function renderDepCard(dep, info, totalHoje){
   const total = _countAll(hoje);
   const paletes = info.total_paletes_dia || 0;
 
-  const boxes = ["pendente","no_recebimento","recebido","fechado","fechado_divergente"].map(s => {
+  function _box(s) {
     const cnt = (hoje[s]||{}).count || 0;
     const pal = (hoje[s]||{}).paletes || 0;
     const pct = total > 0 ? Math.round(cnt/total*100) : 0;
@@ -1272,7 +1277,10 @@ function renderDepCard(dep, info, totalHoje){
       <div class="sb-pct" style="color:${STATUS_COLORS[s]}">${pct}%</div>
       <div class="sb-paletes">${pal} palete(s)</div>
     </div>`;
-  }).join("");
+  }
+
+  const colAtivo = ["pendente","no_recebimento","fechado_divergente"].map(_box).join("");
+  const colFinal = ["recebido","fechado"].map(_box).join("");
 
   const cntPend = (hoje["pendente"]||{}).count || 0;
   const cntER   = (hoje["no_recebimento"]||{}).count || 0;
@@ -1300,7 +1308,16 @@ function renderDepCard(dep, info, totalHoje){
       </div>
       <div class="dep-paletes-badge">🔷 ${paletes} pal.</div>
     </div>
-    <div class="dep-status-grid">${boxes}</div>
+    <div class="dep-status-grid">
+      <div class="dep-status-col">
+        <div class="dep-status-col-hdr" style="color:#EF4444">Em Andamento</div>
+        ${colAtivo}
+      </div>
+      <div class="dep-status-col">
+        <div class="dep-status-col-hdr" style="color:#16A34A">Finalizado</div>
+        ${colFinal}
+      </div>
+    </div>
     ${totalizador}
   </div>`;
 }
