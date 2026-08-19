@@ -127,16 +127,41 @@ button:disabled{opacity:.5;cursor:not-allowed}
 }
 .date-filter input[type=date]:focus{border-color:var(--blue)}
 
-/* ── SUMMARY CARDS ── */
-.summary-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:20px}
-.scard{
-  background:var(--surface);border-radius:10px;padding:14px 18px;
-  box-shadow:var(--shadow);border-left:4px solid transparent;
-  display:flex;flex-direction:column;gap:4px
+/* ── SUMMARY PANEL ── */
+.summary-panel{
+  display:flex;gap:0;margin-bottom:20px;
+  background:var(--surface);border-radius:12px;
+  box-shadow:var(--shadow);overflow:hidden
 }
-.scard-num{font-size:30px;font-weight:800;line-height:1}
-.scard-lbl{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.5px}
-.scard-sub{font-size:11px;color:var(--muted)}
+.sum-group{flex:1;padding:14px 16px}
+.sum-group--ativo{background:rgba(239,68,68,.03);border-right:2px solid var(--border)}
+.sum-group--finalizado{background:rgba(22,163,74,.03)}
+.sum-group-label{
+  font-size:9px;font-weight:800;text-transform:uppercase;
+  letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:6px
+}
+.sum-group-label::after{content:'';flex:1;height:1px;background:var(--border)}
+.sum-group-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.sum-total{
+  display:flex;align-items:center;justify-content:center;
+  padding:0 16px;border-left:2px solid var(--border);
+  flex-direction:column;gap:2px;min-width:90px
+}
+.sum-total-num{font-size:26px;font-weight:800;color:var(--blue)}
+.sum-total-lbl{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);text-align:center}
+/* cards dentro dos grupos */
+.scard{
+  background:rgba(255,255,255,.7);border-radius:8px;padding:10px 12px;
+  border-left:4px solid transparent;
+  display:flex;flex-direction:column;gap:3px
+}
+.scard-num{font-size:26px;font-weight:800;line-height:1}
+.scard-lbl{font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.4px}
+.scard-sub{font-size:10px;color:var(--muted)}
+/* summary-cards legado (inventário) */
+.summary-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:20px}
+.summary-cards .scard{background:var(--surface);box-shadow:var(--shadow);padding:14px 18px}
+.summary-cards .scard-num{font-size:30px}
 .scard.pendente{border-left-color:var(--pendente)}
 .scard.pendente .scard-num{color:var(--pendente)}
 .scard.no_recebimento{border-left-color:var(--em-rec)}
@@ -498,13 +523,19 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .empty-state h3{font-size:16px;color:var(--text);margin-bottom:6px}
 
 /* ── RESPONSIVO ── */
+@media(max-width:900px){
+  .summary-panel{flex-direction:column}
+  .sum-group--ativo{border-right:none;border-bottom:2px solid var(--border)}
+  .sum-total{border-left:none;border-top:2px solid var(--border);flex-direction:row;gap:16px;padding:12px 16px;justify-content:flex-start}
+}
 @media(max-width:768px){
   .farol-grid{grid-template-columns:1fr 1fr}
-  .summary-cards{grid-template-columns:repeat(2,1fr)}
+  .sum-group-cards{grid-template-columns:repeat(3,1fr)}
   .hdr-title{font-size:12px}
 }
 @media(max-width:480px){
   .farol-grid{grid-template-columns:1fr}
+  .sum-group-cards{grid-template-columns:repeat(2,1fr)}
   main{padding:12px}
 }
 </style>
@@ -573,13 +604,28 @@ button:disabled{opacity:.5;cursor:not-allowed}
     <span id="countdownLabel" style="display:none"></span>
   </div>
 
-  <!-- SUMMARY CARDS -->
-  <div class="summary-cards" id="summaryCards">
-    <div class="scard pendente"><div class="scard-num">—</div><div class="scard-lbl">Pendentes (hoje)</div></div>
-    <div class="scard no_recebimento"><div class="scard-num">—</div><div class="scard-lbl">No Recebimento</div></div>
-    <div class="scard recebido"><div class="scard-num">—</div><div class="scard-lbl">Recebidos</div></div>
-    <div class="scard fechado"><div class="scard-num">—</div><div class="scard-lbl">Fechados</div></div>
-    <div class="scard paletes"><div class="scard-num">—</div><div class="scard-lbl">Paletes do Dia</div></div>
+  <!-- SUMMARY PANEL -->
+  <div class="summary-panel" id="summaryCards">
+    <div class="sum-group sum-group--ativo">
+      <div class="sum-group-label" style="color:#EF4444">Em Andamento</div>
+      <div class="sum-group-cards">
+        <div class="scard pendente"><div class="scard-num">—</div><div class="scard-lbl">Pendente</div></div>
+        <div class="scard no_recebimento"><div class="scard-num">—</div><div class="scard-lbl">No Recebimento</div></div>
+        <div class="scard fechado_divergente"><div class="scard-num">—</div><div class="scard-lbl">Fech. c/ Diverg.</div></div>
+      </div>
+    </div>
+    <div class="sum-group sum-group--finalizado">
+      <div class="sum-group-label" style="color:#16A34A">Finalizado</div>
+      <div class="sum-group-cards">
+        <div class="scard recebido"><div class="scard-num">—</div><div class="scard-lbl">Recebido</div></div>
+        <div class="scard fechado"><div class="scard-num">—</div><div class="scard-lbl">Fechado</div></div>
+        <div class="scard armazenado"><div class="scard-num">—</div><div class="scard-lbl">Armazenado</div></div>
+      </div>
+    </div>
+    <div class="sum-total">
+      <div class="sum-total-num">—</div>
+      <div class="sum-total-lbl">Total<br>Hoje</div>
+    </div>
   </div>
 
   <!-- FARÓIS POR DEPÓSITO -->
@@ -1137,40 +1183,50 @@ function renderFarol(data){
 
   const sc = document.getElementById("summaryCards");
   sc.innerHTML = `
-    <div class="scard pendente">
-      <div class="scard-num">${pendHoje}</div>
-      <div class="scard-lbl">Pendentes Hoje</div>
-      <div class="scard-sub">${pendHoje === 0 ? 'nenhum' : pendHoje + ' ASN(s)'}</div>
+    <div class="sum-group sum-group--ativo">
+      <div class="sum-group-label" style="color:#EF4444">Em Andamento</div>
+      <div class="sum-group-cards">
+        <div class="scard pendente">
+          <div class="scard-num">${pendHoje}</div>
+          <div class="scard-lbl">Pendente</div>
+          <div class="scard-sub">${pendHoje === 0 ? 'nenhum' : pendHoje + ' ASN(s)'}</div>
+        </div>
+        <div class="scard no_recebimento">
+          <div class="scard-num">${emRecHoje}</div>
+          <div class="scard-lbl">No Recebimento</div>
+          <div class="scard-sub">${(hoje.no_recebimento||{}).paletes||0} pal.</div>
+        </div>
+        <div class="scard fechado_divergente">
+          <div class="scard-num">${fechDivHoje}</div>
+          <div class="scard-lbl">Fech. c/ Diverg.</div>
+          <div class="scard-sub">${fechDivHoje === 0 ? 'nenhum' : fechDivHoje + ' ASN(s)'}</div>
+        </div>
+      </div>
     </div>
-    <div class="scard no_recebimento">
-      <div class="scard-num">${emRecHoje}</div>
-      <div class="scard-lbl">No Recebimento</div>
-      <div class="scard-sub">${(hoje.no_recebimento||{}).paletes||0} paletes</div>
+    <div class="sum-group sum-group--finalizado">
+      <div class="sum-group-label" style="color:#16A34A">Finalizado</div>
+      <div class="sum-group-cards">
+        <div class="scard recebido">
+          <div class="scard-num">${recHoje}</div>
+          <div class="scard-lbl">Recebido</div>
+          <div class="scard-sub">${(hoje.recebido||{}).paletes||0} pal.</div>
+        </div>
+        <div class="scard fechado">
+          <div class="scard-num">${fechHoje}</div>
+          <div class="scard-lbl">Fechado</div>
+          <div class="scard-sub">${(hoje.fechado||{}).paletes||0} pal.</div>
+        </div>
+        <div class="scard armazenado">
+          <div class="scard-num">${_fmt(totalArm)}</div>
+          <div class="scard-lbl">Armazenado</div>
+          <div class="scard-sub">001/005/BLOCADO${palHoje > 0 ? ' · ' + pctArm + '%' : ''}</div>
+        </div>
+      </div>
     </div>
-    <div class="scard recebido">
-      <div class="scard-num">${recHoje}</div>
-      <div class="scard-lbl">Recebidos Hoje</div>
-      <div class="scard-sub">${(hoje.recebido||{}).paletes||0} paletes</div>
-    </div>
-    <div class="scard fechado">
-      <div class="scard-num">${fechHoje}</div>
-      <div class="scard-lbl">Fechados Hoje</div>
-      <div class="scard-sub">${(hoje.fechado||{}).paletes||0} paletes</div>
-    </div>
-    <div class="scard fechado_divergente">
-      <div class="scard-num">${fechDivHoje}</div>
-      <div class="scard-lbl">Fech. c/ Diverg.</div>
-      <div class="scard-sub">${fechDivHoje === 0 ? 'nenhum' : fechDivHoje + ' ASN(s)'}</div>
-    </div>
-    <div class="scard armazenado">
-      <div class="scard-num">${_fmt(totalArm)}</div>
-      <div class="scard-lbl">Armazenado Hoje</div>
-      <div class="scard-sub">locais 001/005/BLOCADO${palHoje > 0 ? ' · ' + pctArm + '%' : ''}</div>
-    </div>
-    <div class="scard paletes">
-      <div class="scard-num">${totalHojeAll}</div>
-      <div class="scard-lbl">Total Hoje</div>
-      <div class="scard-sub">${palHoje} paletes no dia</div>
+    <div class="sum-total">
+      <div class="sum-total-num">${totalHojeAll}</div>
+      <div class="sum-total-lbl">Total<br>Hoje</div>
+      <div style="font-size:9px;color:var(--muted);margin-top:4px">${palHoje} pal.</div>
     </div>
   `;
 
