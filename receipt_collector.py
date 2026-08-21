@@ -595,6 +595,7 @@ class ReceiptCollector:
         self._running    = False
         self._first_scan_done    = False
         self._range_scan_running = False
+        self._last_max_base      = 0   # maior base numérica conhecida (salva entre runs)
         self._range_scan_done    = False
         self._load_cache()
 
@@ -609,7 +610,8 @@ class ReceiptCollector:
             self._receipts   = data.get("receipts", {})
             self._known_keys = set(data.get("keys", []))
             self._ultima_atualizacao = data.get("ultima_atualizacao")
-            log.info(f"Cache de dados carregado: {len(self._receipts)} receipts, {len(self._known_keys)} chaves.")
+            self._last_max_base = data.get("last_max_base", 0)
+            log.info(f"Cache de dados carregado: {len(self._receipts)} receipts, {len(self._known_keys)} chaves, max_base={self._last_max_base}.")
             return
         except Exception:
             pass
@@ -627,9 +629,19 @@ class ReceiptCollector:
                 receipts_snap = dict(self._receipts)
                 keys_snap     = list(self._known_keys)
                 ts            = self._ultima_atualizacao
+            # Calcula max_base atual para persistir
+            max_base_atual = 0
+            for k in keys_snap:
+                if "." in k and k.split(".")[0].isdigit():
+                    b = int(k.split(".")[0])
+                    if b > max_base_atual:
+                        max_base_atual = b
+            if max_base_atual > 0:
+                self._last_max_base = max_base_atual
             with open(self.DATA_CACHE_FILE, "w", encoding="utf-8") as f:
                 json.dump({"receipts": receipts_snap, "keys": keys_snap,
-                           "ultima_atualizacao": ts}, f, ensure_ascii=False)
+                           "ultima_atualizacao": ts,
+                           "last_max_base": max_base_atual}, f, ensure_ascii=False)
             with open(self.CACHE_FILE, "w") as f:
                 json.dump(keys_snap, f)
         except Exception as e:
@@ -910,6 +922,12 @@ class ReceiptCollector:
                     pass
         return found
 
+    def _scan_bases_range(self, base_ini: int, base_fim: int, max_workers: int = 15) -> set:
+        """Scan completo de um range de bases; retorna receiptkeys tipo 8 encontradas."""
+        bases = list(range(base_ini, base_fim + 1))
+        log.info(f"_scan_bases_range: {base_ini} → {base_fim} ({len(bases)} bases, {max_workers} workers)")
+        return self._scan_bases_quick(bases, max_workers=max_workers, timeout=4)
+
     # ------------------------------------------------------------------ pack cache
 
     def _ensure_pack(self, packkey: str):
@@ -988,6 +1006,21 @@ class ReceiptCollector:
                         f"Bootstrap: {len(type_map)} chaves "
                         f"(exp={len(keys_exports)}, stg={len(keys_stages)}, cache={len(known_cache)})."
                     )
+
+                    # Fallback: se ainda não encontrou nada (todos endpoints retornam 405/vazio),
+                    # faz base scan nos últimos 30 dias a partir de uma âncora estimada.
+                    # Cobre o caso de restart do Render sem cache em disco.
+                    if not type_map:
+                        log.warning(
+                            "Bootstrap sem dados via exports/stages — ativando base scan de fallback."
+                        )
+                        # Estima base mínima: ~10 ASNs/dia, base inicial segura de 60 dias atrás
+                        base_anchor = max(1, self._last_max_base - 900) if self._last_max_base else 75000
+                        base_fim    = self._last_max_base + 1000 if self._last_max_base else 79000
+                        log.info(f"Base scan fallback: {base_anchor} → {base_fim}")
+                        keys_scan = self._scan_bases_range(base_anchor, base_fim, max_workers=20)
+                        type_map  = {k: "" for k in keys_scan}
+                        log.info(f"Base scan fallback: {len(type_map)} chaves encontradas.")
                 else:
                     # Incremental: stages + query por data + mini range scan de novas bases tipo 8
                     keys_stages    = self._discover_from_stages()
@@ -1006,10 +1039,30 @@ class ReceiptCollector:
                     }
                     if known_bases:
                         max_base = max(known_bases)
-                        # Bases completamente novas (fora do índice)
-                        # ASNs são criadas sequencialmente — escanear 30 à frente é suficiente
+
+                        # Detecta gap: se a ASN mais recente é antiga, expande o scan
+                        # para cobrir o período sem cobertura (evita ficar preso após restart)
+                        data_max_base = ""
+                        for k in known:
+                            if "." in k and k.split(".")[0].isdigit():
+                                if int(k.split(".")[0]) == max_base:
+                                    data_max_base = (existing.get(k) or {}).get("data_criacao", "")[:10]
+                                    break
+                        dias_gap = 0
+                        if data_max_base:
+                            try:
+                                dias_gap = (datetime.now(_BRT).date() -
+                                            datetime.strptime(data_max_base, "%Y-%m-%d").date()).days
+                            except Exception:
+                                pass
+                        # ~15 bases por dia de gap; mínimo 31, máximo 1500
+                        alcance_frente = max(31, min(1500, dias_gap * 15 + 31))
+                        if dias_gap > 1:
+                            log.info(f"Gap detectado: {dias_gap} dias sem dados. "
+                                     f"Expandindo scan para +{alcance_frente} bases.")
+
                         scan_ini = max(1, max_base - 5)
-                        scan_fim = max_base + 31
+                        scan_fim = max_base + alcance_frente
                         bases_novas = [
                             b for b in range(scan_ini, scan_fim)
                             if b not in known_bases
