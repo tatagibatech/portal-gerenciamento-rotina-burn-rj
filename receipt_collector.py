@@ -1055,8 +1055,9 @@ class ReceiptCollector:
                                             datetime.strptime(data_max_base, "%Y-%m-%d").date()).days
                             except Exception:
                                 pass
-                        # ~15 bases por dia de gap; mínimo 31, máximo 1500
-                        alcance_frente = max(31, min(1500, dias_gap * 15 + 31))
+                        # ~15 bases por dia de gap; mínimo 500 para cobrir toda a
+                        # produção recente sem truncar (sem limitador superior)
+                        alcance_frente = max(500, dias_gap * 20 + 500)
                         if dias_gap > 1:
                             log.info(f"Gap detectado: {dias_gap} dias sem dados. "
                                      f"Expandindo scan para +{alcance_frente} bases.")
@@ -1176,9 +1177,10 @@ class ReceiptCollector:
                     except Exception as e:
                         log.debug(f"get_inventory_by_receipt({rk}): {e}")
 
-            # ── Atualiza estado ─────────────────────────────────────────────────
+            # ── Atualiza estado (merge, não substitui — evita apagar receipts
+            #    adicionados por fetch_and_store durante este ciclo) ────────────
             with self._lock:
-                self._receipts = updated
+                self._receipts.update(updated)
                 self._ultima_atualizacao = datetime.now(_BRT).strftime("%d/%m/%Y %H:%M:%S")
                 self._erro = None
 
