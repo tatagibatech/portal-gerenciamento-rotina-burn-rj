@@ -1281,6 +1281,13 @@ function renderDepCard(dep, info, totalHoje){
     </div>`;
   }
 
+  const cntPend = (hoje["pendente"]||{}).count || 0;
+  const cntER   = (hoje["no_recebimento"]||{}).count || 0;
+  const cntRec  = (hoje["recebido"]||{}).count || 0;
+  const cntFec  = (hoje["fechado"]||{}).count || 0;
+  const cntFDiv = (hoje["fechado_divergente"]||{}).count || 0;
+  const armQty  = info.total_armazenado || 0;
+
   const colAtivo = ["pendente","no_recebimento","fechado_divergente"].map(_box).join("");
   const armBox = `<div class="status-box sb-armazenado">
     <div class="sb-label">Armazenado</div>
@@ -1289,13 +1296,6 @@ function renderDepCard(dep, info, totalHoje){
     <div class="sb-paletes">locais 001 / 005 / BLOCADO</div>
   </div>`;
   const colFinal = ["recebido","fechado"].map(_box).join("") + armBox;
-
-  const cntPend = (hoje["pendente"]||{}).count || 0;
-  const cntER   = (hoje["no_recebimento"]||{}).count || 0;
-  const cntRec  = (hoje["recebido"]||{}).count || 0;
-  const cntFec  = (hoje["fechado"]||{}).count || 0;
-  const cntFDiv = (hoje["fechado_divergente"]||{}).count || 0;
-  const armQty  = info.total_armazenado || 0;
   const partes  = [];
   if (cntPend) partes.push(`<span class="tot-pend">${cntPend} pend.</span>`);
   if (cntER)   partes.push(`<span class="tot-er">${cntER} no rec.</span>`);
