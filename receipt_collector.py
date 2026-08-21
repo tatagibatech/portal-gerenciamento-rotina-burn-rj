@@ -756,8 +756,8 @@ class ReceiptCollector:
             max_base = BASE_MINIMO_2026
 
         if not self._first_scan_done:
-            scan_start = max_base            # parte do mínimo absoluto
-            scan_end   = max_base + 6000     # cobre toda a faixa do ano (~6000 bases)
+            scan_start = max_base            # parte do máximo conhecido
+            scan_end   = max_base + 500      # cobre ~33 dias à frente (~33s com 20 workers)
             self._first_scan_done = True
             log.info(f"Range scan BOOTSTRAP paralelo ({max_workers} workers): bases {scan_start}-{scan_end}")
         else:
@@ -1055,9 +1055,10 @@ class ReceiptCollector:
                                             datetime.strptime(data_max_base, "%Y-%m-%d").date()).days
                             except Exception:
                                 pass
-                        # ~15 bases por dia de gap; mínimo 500 para cobrir toda a
-                        # produção recente sem truncar (sem limitador superior)
-                        alcance_frente = max(500, dias_gap * 20 + 500)
+                        # ~15 bases por dia de gap; mínimo 100 para cobertura rápida.
+                        # Scan mais amplo (500+) é feito pelo _background_range_scan
+                        # em thread separada para não bloquear o ciclo de 30s.
+                        alcance_frente = max(100, dias_gap * 20 + 100)
                         if dias_gap > 1:
                             log.info(f"Gap detectado: {dias_gap} dias sem dados. "
                                      f"Expandindo scan para +{alcance_frente} bases.")
@@ -1243,6 +1244,13 @@ class ReceiptCollector:
         self._running = True
         self._thread = threading.Thread(target=self._loop, daemon=True, name="receipt-collector")
         self._thread.start()
+        # Lança o range scan em background para cobrir o histórico e bases além
+        # do alcance do mini-scan rápido (>100 bases à frente de max_base).
+        if not self._range_scan_running:
+            self._range_scan_running = True
+            threading.Thread(
+                target=self._background_range_scan, daemon=True, name="range-scan"
+            ).start()
         log.info(f"ReceiptCollector iniciado — intervalo {self._intervalo}s.")
 
     def parar(self):
