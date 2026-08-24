@@ -506,10 +506,10 @@ def _receipt_to_dict(receipt: dict, pack_cache: dict) -> dict:
             "condcode":         det.get("conditioncode") or "",
         })
 
-    # Quantidade armazenada: linhas cujo toloc inicia com 001, 005 ou BLOCADO
+    # Paletes armazenados: linhas cujo toloc inicia com 001, 005 ou BLOCADO
     _LOCS_ARM = ("001", "005", "BLOCADO")
     qty_armazenada = round(sum(
-        l["qty_recebido"] for l in linhas
+        (l["pal_recebido"] or 0) for l in linhas
         if any(l["toloc"].upper().startswith(p) for p in _LOCS_ARM)
     ), 2)
     paletes["qty_armazenada"] = qty_armazenada
