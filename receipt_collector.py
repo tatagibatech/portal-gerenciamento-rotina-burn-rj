@@ -1058,10 +1058,23 @@ class ReceiptCollector:
                             if b not in known_bases
                         ]
                         # Bases recentes já conhecidas: re-sonda para capturar
-                        # sub-keys criados hoje em bases já indexadas (ex: 76491.15)
-                        bases_recentes = sorted(
-                            [b for b in known_bases if b >= max_base - 200],
-                        )[-30:]  # últimas 30 bases conhecidas
+                        # sub-keys criados hoje em bases já indexadas (ex: 77339.11)
+                        # Usa janela de 14 dias por data_criacao — sem limite numérico.
+                        cutoff_str = (
+                            datetime.now(_BRT).date() - timedelta(days=14)
+                        ).isoformat()
+                        bases_por_data = {
+                            int(rk.split(".")[0])
+                            for rk, rec in existing.items()
+                            if "." in rk
+                            and rk.split(".")[0].isdigit()
+                            and (rec.get("data_criacao") or "")[:10] >= cutoff_str
+                        }
+                        # Fallback: 50 maiores por número (cobre bases sem data)
+                        bases_por_num = set(
+                            sorted(known_bases)[-50:]
+                        )
+                        bases_recentes = sorted(bases_por_data | bases_por_num)
                         scan_list = bases_novas + bases_recentes
                         if scan_list:
                             scan_result = self._scan_bases_quick(
