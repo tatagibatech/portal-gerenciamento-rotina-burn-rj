@@ -1342,8 +1342,9 @@ class ReceiptCollector:
                 "supplier_name": "",  # preenchido com o primeiro encontrado nas ASNs
                 "hoje": {s: {"count": 0, "paletes": 0, "receiptkeys": []} for s in STATUS_ORDER},
                 "backlog": {s: {"count": 0, "paletes": 0, "receiptkeys": []} for s in STATUS_ORDER},
-                "total_paletes_dia": 0,
-                "total_armazenado":  0,
+                "total_paletes_dia":      0,
+                "total_armazenado":       0,
+                "armazenado_count_hoje":  0,
             }
 
         # SEM depósito identificado
@@ -1354,8 +1355,9 @@ class ReceiptCollector:
             "supplier_name": "",
             "hoje":   {s: {"count": 0, "paletes": 0, "receiptkeys": []} for s in STATUS_ORDER},
             "backlog": {s: {"count": 0, "paletes": 0, "receiptkeys": []} for s in STATUS_ORDER},
-            "total_paletes_dia": 0,
-            "total_armazenado":  0,
+            "total_paletes_dia":      0,
+            "total_armazenado":       0,
+            "armazenado_count_hoje":  0,
         }
 
         for rk, rec in receipts.items():
@@ -1386,14 +1388,18 @@ class ReceiptCollector:
 
             if is_hoje:
                 resultado[dep]["total_paletes_dia"] += paletes
-                resultado[dep]["total_armazenado"]  += rec["paletes"].get("qty_armazenada", 0)
+                qty_arm = rec["paletes"].get("qty_armazenada", 0)
+                resultado[dep]["total_armazenado"]  += qty_arm
+                if qty_arm > 0:
+                    resultado[dep]["armazenado_count_hoje"] += 1
 
         # Totais globais
         totais = {
             "hoje":   {s: {"count": 0, "paletes": 0} for s in STATUS_ORDER},
             "backlog": {s: {"count": 0, "paletes": 0} for s in STATUS_ORDER},
-            "total_paletes_dia": 0,
-            "total_armazenado":  0,
+            "total_paletes_dia":     0,
+            "total_armazenado":      0,
+            "armazenado_count_hoje": 0,
             "total_receipts": len(receipts),
         }
         for dep_data in resultado.values():
@@ -1401,8 +1407,9 @@ class ReceiptCollector:
                 for bucket in ["hoje", "backlog"]:
                     totais[bucket][s]["count"]   += dep_data[bucket][s]["count"]
                     totais[bucket][s]["paletes"]  += dep_data[bucket][s]["paletes"]
-            totais["total_paletes_dia"] += dep_data["total_paletes_dia"]
-            totais["total_armazenado"]  += dep_data.get("total_armazenado", 0)
+            totais["total_paletes_dia"]     += dep_data["total_paletes_dia"]
+            totais["total_armazenado"]      += dep_data.get("total_armazenado", 0)
+            totais["armazenado_count_hoje"] += dep_data.get("armazenado_count_hoje", 0)
 
         # Resumo do mês vigente (backlog filtrado ao mês corrente, sem receiptkeys)
         mes_str = datetime.now(_BRT).strftime("%Y-%m")
