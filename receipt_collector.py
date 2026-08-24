@@ -591,17 +591,35 @@ class ReceiptCollector:
 
     # ------------------------------------------------------------------ cache
 
+    @staticmethod
+    def _meses_retencao() -> set:
+        """Meses a manter em memória/disco: mês atual + anterior."""
+        hoje = datetime.now(_BRT)
+        mes_atual = hoje.strftime("%Y-%m")
+        primeiro_dia = hoje.replace(day=1)
+        mes_anterior = (primeiro_dia - timedelta(days=1)).strftime("%Y-%m")
+        return {mes_atual, mes_anterior}
+
     def _load_cache(self):
-        """Carrega dados completos do disco (sobrevive a restarts, não a deploys)."""
+        """Carrega dados do disco filtrando só os últimos 2 meses (limita RAM)."""
+        meses = self._meses_retencao()
         # 1. Tenta carregar dados completos
         try:
             with open(self.DATA_CACHE_FILE, encoding="utf-8") as f:
                 data = json.load(f)
-            self._receipts   = data.get("receipts", {})
+            todos = data.get("receipts", {})
+            # Filtra: mantém apenas recebimentos dos últimos 2 meses
+            self._receipts = {
+                k: v for k, v in todos.items()
+                if (v.get("data_criacao") or v.get("data_recebimento") or "")[:7] in meses
+            }
             self._known_keys = set(data.get("keys", []))
             self._ultima_atualizacao = data.get("ultima_atualizacao")
             self._last_max_base = data.get("last_max_base", 0)
-            log.info(f"Cache de dados carregado: {len(self._receipts)} receipts, {len(self._known_keys)} chaves, max_base={self._last_max_base}.")
+            log.info(
+                f"Cache carregado: {len(todos)} total → {len(self._receipts)} nos últimos 2 meses "
+                f"({len(self._known_keys)} chaves, max_base={self._last_max_base})."
+            )
             return
         except Exception:
             pass
@@ -615,10 +633,15 @@ class ReceiptCollector:
 
     def _save_cache(self):
         try:
+            meses = self._meses_retencao()
             with self._lock:
-                receipts_snap = dict(self._receipts)
-                keys_snap     = list(self._known_keys)
-                ts            = self._ultima_atualizacao
+                # Salva só os recebimentos dos últimos 2 meses (mantém arquivo pequeno)
+                receipts_snap = {
+                    k: v for k, v in self._receipts.items()
+                    if (v.get("data_criacao") or v.get("data_recebimento") or "")[:7] in meses
+                }
+                keys_snap = list(self._known_keys)
+                ts        = self._ultima_atualizacao
             # Calcula max_base atual para persistir
             max_base_atual = 0
             for k in keys_snap:
