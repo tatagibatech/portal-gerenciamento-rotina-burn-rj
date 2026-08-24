@@ -1409,7 +1409,14 @@ class ReceiptCollector:
 
             if is_hoje:
                 resultado[dep]["total_paletes_dia"] += paletes
-                qty_arm = rec["paletes"].get("qty_armazenada", 0)
+                # Recomputa armazenado a partir das linhas para corrigir cache antigo
+                # (qty_armazenada era calculada em unidades; agora em paletes via pal_recebido)
+                _LOCS_ARM = ("001", "005", "BLOCADO")
+                qty_arm = round(sum(
+                    (l.get("pal_recebido") or 0)
+                    for l in (rec.get("linhas") or [])
+                    if any(l.get("toloc", "").upper().startswith(p) for p in _LOCS_ARM)
+                ), 2)
                 resultado[dep]["total_armazenado"]  += qty_arm
                 if qty_arm > 0:
                     resultado[dep]["armazenado_count_hoje"] += 1
