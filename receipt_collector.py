@@ -1456,11 +1456,14 @@ class ReceiptCollector:
 
             if is_hoje:
                 resultado[dep]["total_paletes_dia"] += paletes
-                # Recomputa armazenado a partir das linhas para corrigir cache antigo
-                # (qty_armazenada era calculada em unidades; agora em paletes via pal_recebido)
+                # Paletes armazenados: linhas em 001/005/BLOCADO
+                # Usa pal_recebido se disponível; fallback: qty_recebido / qpp_estimado
                 _LOCS_ARM = ("001", "005", "BLOCADO")
+                qpp_est = rec.get("paletes", {}).get("qpp", 0)
                 qty_arm = round(sum(
-                    (l.get("pal_recebido") or 0)
+                    l.get("pal_recebido")
+                    if l.get("pal_recebido") is not None
+                    else (l.get("qty_recebido", 0) / qpp_est if qpp_est > 0 else 0)
                     for l in (rec.get("linhas") or [])
                     if any(l.get("toloc", "").upper().startswith(p) for p in _LOCS_ARM)
                 ), 2)
