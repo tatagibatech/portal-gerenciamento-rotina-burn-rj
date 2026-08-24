@@ -484,14 +484,9 @@ def api_refresh():
 
 @app.get("/api/fetch-asn/<receiptkey>")
 def api_fetch_asn(receiptkey):
-    """Busca e indexa uma ASN específica imediatamente pelo receiptkey."""
-    try:
-        rec = collector.fetch_and_store(receiptkey)
-        if rec:
-            return jsonify({"ok": True, "receipt": rec})
-        return jsonify({"ok": False, "msg": f"ASN {receiptkey} não encontrada no WMS."}), 404
-    except Exception as e:
-        return jsonify({"erro": str(e)}), 500
+    """Enfileira ASN para busca pelo background thread (não-bloqueante)."""
+    collector.queue_fetch(receiptkey)
+    return jsonify({"ok": True, "queued": receiptkey})
 
 
 @app.get("/api/depositos")

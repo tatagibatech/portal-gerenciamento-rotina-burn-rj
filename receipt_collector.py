@@ -586,6 +586,7 @@ class ReceiptCollector:
         self._last_max_base      = 0   # maior base numérica conhecida (salva entre runs)
         self._range_scan_done    = False
         self._farol_cache: dict | None = None   # resultado pré-computado de get_farol()
+        self._fetch_queue: set = set()          # keys enfileiradas via queue_fetch (não-bloqueante)
         self._load_cache()
 
     # ------------------------------------------------------------------ cache
@@ -956,6 +957,9 @@ class ReceiptCollector:
         try:
             with self._lock:
                 existing = dict(self._receipts)
+                # Drena a fila de fetches manuais enfileirados via queue_fetch()
+                manual_queue = set(self._fetch_queue)
+                self._fetch_queue.clear()
 
             startup       = len(existing) == 0
             today_str     = _hoje_str()
@@ -1130,10 +1134,15 @@ class ReceiptCollector:
                             or data_rec_stored in (today_str, yesterday_str)):
                         need_fetch.add(rk)
 
+            # Inclui fetches manuais enfileirados (via /api/fetch-asn não-bloqueante)
+            need_fetch.update(manual_queue - set(existing.keys()))
+            # Para keys manuais já conhecidas, força re-fetch independente de status
+            need_fetch.update(manual_queue & set(existing.keys()))
+
             log.info(
                 f"Startup={startup} | discovered={len(type_map)} | "
                 f"today={today_str} | yesterday={yesterday_str} | "
-                f"need_fetch={len(need_fetch)}"
+                f"manual_queue={len(manual_queue)} | need_fetch={len(need_fetch)}"
             )
 
             # ── Busca em paralelo ───────────────────────────────────────────────
@@ -1252,13 +1261,8 @@ class ReceiptCollector:
         self._running = True
         self._thread = threading.Thread(target=self._loop, daemon=True, name="receipt-collector")
         self._thread.start()
-        # Lança o range scan em background para cobrir o histórico e bases além
-        # do alcance do mini-scan rápido (>100 bases à frente de max_base).
-        if not self._range_scan_running:
-            self._range_scan_running = True
-            threading.Thread(
-                target=self._background_range_scan, daemon=True, name="range-scan"
-            ).start()
+        # Nota: background range scan NÃO é lançado aqui para não sobrecarregar o
+        # WMS no startup. É lançado pelo _loop() a cada 20 ciclos (~10 min).
         log.info(f"ReceiptCollector iniciado — intervalo {self._intervalo}s.")
 
     def parar(self):
@@ -1288,6 +1292,11 @@ class ReceiptCollector:
         if imported:
             self._save_cache()
         return imported
+
+    def queue_fetch(self, receiptkey: str):
+        """Enfileira ASN para busca no próximo ciclo do background thread (não-bloqueante)."""
+        with self._lock:
+            self._fetch_queue.add(receiptkey)
 
     def fetch_and_store(self, receiptkey: str) -> dict | None:
         """Busca uma ASN específica imediatamente e a adiciona ao estado."""
