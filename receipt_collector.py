@@ -1059,21 +1059,20 @@ class ReceiptCollector:
                         ]
                         # Bases recentes já conhecidas: re-sonda para capturar
                         # sub-keys criados hoje em bases já indexadas (ex: 77339.11)
-                        # Usa janela de 14 dias por data_criacao — sem limite numérico.
-                        cutoff_str = (
-                            datetime.now(_BRT).date() - timedelta(days=14)
+                        # Usa janela de 2 dias (hoje + ontem) → max ~30 bases no ciclo rápido.
+                        # Janela mais ampla (14 dias) é feita pelo _background_range_scan.
+                        cutoff_rapido = (
+                            datetime.now(_BRT).date() - timedelta(days=2)
                         ).isoformat()
                         bases_por_data = {
                             int(rk.split(".")[0])
                             for rk, rec in existing.items()
                             if "." in rk
                             and rk.split(".")[0].isdigit()
-                            and (rec.get("data_criacao") or "")[:10] >= cutoff_str
+                            and (rec.get("data_criacao") or "")[:10] >= cutoff_rapido
                         }
-                        # Fallback: 50 maiores por número (cobre bases sem data)
-                        bases_por_num = set(
-                            sorted(known_bases)[-50:]
-                        )
+                        # Fallback: 30 maiores por número (cobre bases sem data)
+                        bases_por_num = set(sorted(known_bases)[-30:])
                         bases_recentes = sorted(bases_por_data | bases_por_num)
                         scan_list = bases_novas + bases_recentes
                         if scan_list:
@@ -1232,8 +1231,22 @@ class ReceiptCollector:
     # ------------------------------------------------------------------ background thread
 
     def _loop(self):
+        cycle = 0
         while self._running:
-            self._refresh()
+            try:
+                self._refresh()
+            except Exception as e:
+                log.error(f"_loop: exceção não capturada no _refresh — continuando. {e}")
+                with self._lock:
+                    self._erro = str(e)
+            cycle += 1
+            # A cada 20 ciclos (~10 min), relança o background range scan para capturar
+            # novos sub-keys em bases fora da janela de 2 dias do ciclo rápido.
+            if cycle % 20 == 0 and not self._range_scan_running:
+                self._range_scan_running = True
+                threading.Thread(
+                    target=self._background_range_scan, daemon=True, name="range-scan"
+                ).start()
             for _ in range(self._intervalo):
                 if not self._running:
                     break
