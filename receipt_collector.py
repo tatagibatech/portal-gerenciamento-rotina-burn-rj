@@ -585,6 +585,7 @@ class ReceiptCollector:
         self._range_scan_running = False
         self._last_max_base      = 0   # maior base numérica conhecida (salva entre runs)
         self._range_scan_done    = False
+        self._farol_cache: dict | None = None   # resultado pré-computado de get_farol()
         self._load_cache()
 
     # ------------------------------------------------------------------ cache
@@ -1163,7 +1164,14 @@ class ReceiptCollector:
                 self._ultima_atualizacao = datetime.now(_BRT).strftime("%d/%m/%Y %H:%M:%S")
                 self._erro = None
 
-            self._save_cache()
+            # Pré-computa farol para que /api/farol responda em O(1) (sem re-processar 10k receipts)
+            try:
+                self._farol_cache = self.get_farol()
+            except Exception as e:
+                log.warning(f"Erro ao pré-computar farol: {e}")
+
+            # Salva cache em thread separada para não bloquear o ciclo principal
+            threading.Thread(target=self._save_cache, daemon=True, name="cache-save").start()
             log.info(f"Refresh concluído: {len(updated)} receipts ({len(need_fetch)} buscados).")
 
             # Descoberta do histórico via range scan é feita localmente pelo script
@@ -1293,7 +1301,8 @@ class ReceiptCollector:
             with self._lock:
                 self._receipts[rk] = r_dict
                 self._known_keys.add(rk)
-            self._save_cache()
+            self._farol_cache = None  # invalida cache para próxima requisição
+            threading.Thread(target=self._save_cache, daemon=True, name="cache-save").start()
             log.info(f"ASN {rk} buscada manualmente e indexada.")
             return r_dict
         except Exception as e:
@@ -1315,8 +1324,12 @@ class ReceiptCollector:
     def get_farol(self, data_filtro: str | None = None):
         """
         Retorna resumo agrupado por depósito e status.
-        data_filtro: 'YYYY-MM-DD' para filtrar dia específico (None = todos os dias).
+        data_filtro: 'YYYY-MM-DD' para filtrar dia específico (None = hoje).
+        Sem filtro: retorna cache pré-computado em O(1) se disponível.
         """
+        if data_filtro is None and self._farol_cache is not None:
+            return self._farol_cache
+
         with self._lock:
             receipts = dict(self._receipts)
 
