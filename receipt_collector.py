@@ -1152,31 +1152,9 @@ class ReceiptCollector:
                     if rec:
                         updated[rk] = rec
 
-            # ── Saldo de inventário: armazenado hoje nas áreas de logística ──────
-            _LOCS_ARM = ("001", "005", "BLOCADO")
-            rks_para_inv = [
-                rk for rk, rec in updated.items()
-                if (rec.get("data_criacao") or "")[:10] == today_str
-                and rec.get("status_raw", "") in ("9", "11", "15", "21")
-            ]
-            if rks_para_inv:
-                log.info(f"Consultando saldo inventário para {len(rks_para_inv)} ASNs recebidas hoje...")
-                for rk in rks_para_inv:
-                    try:
-                        inv = self._client.get_inventory_by_receipt(rk)
-                        if inv:
-                            qty_arm = round(sum(
-                                float(item.get("qty") or item.get("qtyonhand") or 0)
-                                for item in inv
-                                if any(
-                                    (item.get("loc") or "").upper().startswith(p)
-                                    for p in _LOCS_ARM
-                                )
-                            ), 2)
-                            updated[rk]["paletes"]["qty_armazenada"] = qty_arm
-                            log.debug(f"Inv {rk}: {len(inv)} registros, {qty_arm} em 001/005/BLOCADO")
-                    except Exception as e:
-                        log.debug(f"get_inventory_by_receipt({rk}): {e}")
+            # Nota: qty_armazenada é calculada em _receipt_to_dict via toloc das linhas
+            # (endereços iniciados em 001/005/BLOCADO). O endpoint showinventorybalancelist
+            # não retorna campo 'loc', portanto não é usável para checar localização atual.
 
             # ── Atualiza estado (merge, não substitui — evita apagar receipts
             #    adicionados por fetch_and_store durante este ciclo) ────────────
