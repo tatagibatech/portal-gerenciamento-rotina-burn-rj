@@ -1104,23 +1104,31 @@ class ReceiptCollector:
                         need_fetch.add(rk)
             else:
                 # Incremental:
-                # 1. Novas keys descobertas (via stages ou webhook externo)
+                # 1. Novas keys descobertas (via stages ou type_map)
                 for rk in type_map:
                     if rk not in existing:
                         need_fetch.add(rk)
-                # 2. ASNs abertas de hoje ou ontem → re-busca para atualização de status
+                # 1b. Mudança de status detectada via type_map (ex: 9→11)
+                for rk, novo_st in type_map.items():
+                    if rk in existing and novo_st:
+                        old_st = existing[rk].get("status_raw", "")
+                        if novo_st != old_st:
+                            need_fetch.add(rk)
+                # 2. ASNs ATIVAS de hoje ou ontem → re-busca para atualização de status
+                # Status 9/21 (recebido) com dados completos são estáveis — não re-busca
+                # a cada ciclo para não sobrecarregar o WMS com dezenas de fetches.
                 for rk, rec in existing.items():
                     st_raw = rec.get("status_raw", "")
                     if st_raw in self._STATUS_WMS_FECHADO:
-                        continue  # fechada/cancelada — dados congelados, pula
+                        continue  # fechada/cancelada — congelada
+                    # Recebida com dados completos: type_map já captura mudanças (1b acima)
+                    if st_raw in {"9", "21"} and rec.get("n_linhas", 0) > 0:
+                        continue
                     data_criacao = (rec.get("data_criacao") or "")[:10]
                     data_rec_stored = (rec.get("data_recebimento") or "")[:10]
-                    # Re-busca se adddate=hoje/ontem OU se receiptdate=hoje/ontem
-                    # (captura ASNs criadas antes de ontem mas recebidas hoje)
                     if (data_criacao in (today_str, yesterday_str)
                             or data_rec_stored in (today_str, yesterday_str)):
                         need_fetch.add(rk)
-                    # ASN aberta sem atividade recente: não re-busca automaticamente
 
             log.info(
                 f"Startup={startup} | discovered={len(type_map)} | "
