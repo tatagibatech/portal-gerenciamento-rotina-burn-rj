@@ -74,21 +74,9 @@ def _hoje_str():
     return datetime.now(_BRT).date().isoformat()
 
 
-def _meses_validos() -> set | None:
-    """
-    Janela de meses válidos para o backlog (mês atual + anterior).
-    Retorna None em agosto/2026 — histórico completo sem restrição.
-    A partir de setembro/2026 aplica a janela de 2 meses automaticamente.
-    """
-    hoje = datetime.now(_BRT).date()
-    if hoje.year == 2026 and hoje.month <= 8:
-        return None  # agosto/2026: sem filtro, exibe todo o histórico
-    mes_atual = hoje.strftime("%Y-%m")
-    if hoje.month == 1:
-        mes_anterior = f"{hoje.year - 1}-12"
-    else:
-        mes_anterior = f"{hoje.year}-{hoje.month - 1:02d}"
-    return {mes_atual, mes_anterior}
+def _meses_validos() -> set:
+    """Restringe o backlog ao mês corrente apenas."""
+    return {datetime.now(_BRT).strftime("%Y-%m")}
 
 
 class WMSClient:
@@ -1403,12 +1391,50 @@ class ReceiptCollector:
             totais["total_paletes_dia"] += dep_data["total_paletes_dia"]
             totais["total_armazenado"]  += dep_data.get("total_armazenado", 0)
 
+        # Resumo do mês vigente (backlog filtrado ao mês corrente, sem receiptkeys)
+        mes_str = datetime.now(_BRT).strftime("%Y-%m")
+        mes_vigente: dict = {
+            "mes": mes_str,
+            "por_deposito": {},
+            "totais": {s: {"count": 0, "paletes": 0} for s in STATUS_ORDER},
+            "total_asns": 0,
+            "total_paletes": 0,
+        }
+        for dep, dep_data in resultado.items():
+            if dep == "OUTROS":
+                continue
+            bl = dep_data["backlog"]
+            dep_total_asns = sum(bl[s]["count"] for s in STATUS_ORDER)
+            dep_total_pal  = sum(bl[s]["paletes"] for s in STATUS_ORDER)
+            if dep_total_asns == 0:
+                continue
+            mes_vigente["por_deposito"][dep] = {
+                "nome":         dep_data["nome"],
+                "zona":         dep_data["zona"],
+                "status":       {s: {"count": bl[s]["count"], "paletes": bl[s]["paletes"]} for s in STATUS_ORDER},
+                "total_asns":   dep_total_asns,
+                "total_paletes": dep_total_pal,
+            }
+            for s in STATUS_ORDER:
+                mes_vigente["totais"][s]["count"]   += bl[s]["count"]
+                mes_vigente["totais"][s]["paletes"]  += bl[s]["paletes"]
+            mes_vigente["total_asns"]    += dep_total_asns
+            mes_vigente["total_paletes"] += dep_total_pal
+
+        # Remove receiptkeys do response — são pesados (~80KB para 10k ASNs) e não
+        # usados pelo frontend (o detalhe usa /api/receipts separado)
+        for dep_data in resultado.values():
+            for bucket in ("hoje", "backlog"):
+                for s in STATUS_ORDER:
+                    dep_data[bucket][s].pop("receiptkeys", None)
+
         return {
-            "depositos":  resultado,
-            "totais":     totais,
+            "depositos":   resultado,
+            "totais":      totais,
+            "mes_vigente": mes_vigente,
             "ultima_atualizacao": self._ultima_atualizacao,
-            "erro":       self._erro,
-            "hoje":       hoje_str,
+            "erro":        self._erro,
+            "hoje":        hoje_str,
         }
 
     def get_receipt_detail(self, receiptkey: str):

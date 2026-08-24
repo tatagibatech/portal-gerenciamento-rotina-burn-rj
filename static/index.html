@@ -642,26 +642,27 @@ button:disabled{opacity:.5;cursor:not-allowed}
     <div class="no-data-card">Carregando dados...</div>
   </div>
 
-  <!-- BACKLOG -->
+  <!-- RESUMO DO MÊS VIGENTE -->
   <div class="backlog-section">
-    <div class="section-title">Backlog — Dias Anteriores</div>
+    <div class="section-title" id="mesVigenteTitle">Resumo do Mês — carregando…</div>
     <div class="backlog-table-wrap">
       <table class="backlog-table">
         <thead>
           <tr>
             <th>Depósito</th>
-            <th>Pendentes</th>
+            <th>Pendente</th>
             <th>No Recebimento</th>
-            <th>Recebidos</th>
-            <th>Fechados</th>
+            <th>Recebido</th>
+            <th>Fechado</th>
             <th style="color:var(--fech-div)">Fech. c/ Diverg.</th>
-            <th>Total Paletes</th>
+            <th>Paletes</th>
+            <th>Total ASNs</th>
           </tr>
         </thead>
-        <tbody id="backlogBody">
-          <tr><td colspan="7" style="text-align:center;color:var(--muted);padding:20px">Carregando...</td></tr>
+        <tbody id="mesVigenteBody">
+          <tr><td colspan="8" style="text-align:center;color:var(--muted);padding:20px">Carregando...</td></tr>
         </tbody>
-        <tfoot id="backlogFoot"></tfoot>
+        <tfoot id="mesVigenteFoot"></tfoot>
       </table>
     </div>
   </div>
@@ -1085,22 +1086,22 @@ atualizarClock();
 /* ══════════════════════════════════════════════════════════════
    FAROL — CARGA
 ══════════════════════════════════════════════════════════════ */
-async function carregarFarol() {
+async function carregarFarol(silencioso = false) {
   const dt = document.getElementById("filterDate").value;
   let url = "/api/farol";
   if (dt) url += `?data=${dt}`;
 
   try {
-    mostrarLoading(false);
+    if (!silencioso) mostrarLoading(false);
     const r = await fetch(url);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     _farol = await r.json();
     renderFarol(_farol);
     resetContagem();
   } catch(e) {
-    toast(`Erro ao carregar farol: ${e.message}`, "error");
+    if (!silencioso) toast(`Erro ao carregar farol: ${e.message}`, "error");
   } finally {
-    esconderLoading();
+    if (!silencioso) esconderLoading();
   }
 }
 
@@ -1116,7 +1117,7 @@ function resetContagem(){
     if (ind) ind.style.color = "#16A34A";
   };
   src.onmessage = () => {
-    carregarFarol();
+    carregarFarol(true);  // silencioso — sem spinner no real-time
     resetContagem();
   };
   src.onerror = () => {
@@ -1252,8 +1253,8 @@ function renderFarol(data){
     grid.innerHTML = deps.map(([dep, info]) => renderDepCard(dep, info, hojeTotal)).join("");
   }
 
-  // Backlog
-  renderBacklog(data.depositos);
+  // Resumo do mês vigente
+  renderMesVigente(data.mes_vigente);
 }
 
 function renderDepCard(dep, info, totalHoje){
@@ -1324,56 +1325,65 @@ function renderDepCard(dep, info, totalHoje){
   </div>`;
 }
 
-function renderBacklog(depositos){
-  const tbody = document.getElementById("backlogBody");
-  const tfoot = document.getElementById("backlogFoot");
-  if (!depositos) { tbody.innerHTML = ""; tfoot.innerHTML = ""; return; }
+function renderMesVigente(mv) {
+  const tbody = document.getElementById("mesVigenteBody");
+  const tfoot = document.getElementById("mesVigenteFoot");
+  const title = document.getElementById("mesVigenteTitle");
+  if (!mv) { if(tbody) tbody.innerHTML = ""; if(tfoot) tfoot.innerHTML = ""; return; }
 
-  const STATUS_BL = ["pendente","no_recebimento","recebido","fechado","fechado_divergente"];
-  let totPend = 0, totER = 0, totRec = 0, totFec = 0, totFDiv = 0, totPal = 0;
+  const MESES = ["","Janeiro","Fevereiro","Março","Abril","Maio","Junho",
+    "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+  const [ano, mes] = (mv.mes || "").split("-");
+  if (title) title.textContent = `Resumo do Mês — ${MESES[parseInt(mes)] || mes}/${ano}`;
 
-  const rows = Object.entries(depositos)
-    .filter(([k]) => k !== "OUTROS")
-    .sort(([a],[b]) => parseInt(a)-parseInt(b))
-    .map(([dep, info]) => {
-      const bl = info.backlog || {};
-      const totalPal = STATUS_BL.reduce((s,st) => s + ((bl[st]||{}).paletes||0), 0);
-      const anyBl = STATUS_BL.some(st => ((bl[st]||{}).count||0) > 0);
-      if (!anyBl) return "";
-      totPend += (bl.pendente||{}).count||0;
-      totER   += (bl.no_recebimento||{}).count||0;
-      totRec  += (bl.recebido||{}).count||0;
-      totFec  += (bl.fechado||{}).count||0;
-      totFDiv += (bl.fechado_divergente||{}).count||0;
-      totPal  += totalPal;
-      const blLabel = info.supplier_name || info.nome || dep;
-      return `<tr>
-        <td class="bl-dep">DEPOSITO: ${blLabel}</td>
-        <td>${countBadge(bl.pendente,"pend")}</td>
-        <td>${countBadge(bl.no_recebimento,"emrec")}</td>
-        <td>${countBadge(bl.recebido,"rec")}</td>
-        <td>${countBadge(bl.fechado,"fec")}</td>
-        <td>${countBadge(bl.fechado_divergente,"fecdiv")}</td>
-        <td><strong>${totalPal}</strong></td>
-      </tr>`;
-    }).filter(Boolean);
+  const ST = ["pendente","no_recebimento","recebido","fechado","fechado_divergente"];
+  const deps = Object.entries(mv.por_deposito || {})
+    .sort(([a],[b]) => parseInt(a) - parseInt(b));
 
-  if (rows.length) {
-    tbody.innerHTML = rows.join("");
-    const totTotal = totPend + totER + totRec + totFec + totFDiv;
-    tfoot.innerHTML = `<tr class="bl-total-row">
-      <td><strong>TOTAL</strong></td>
-      <td><span class="count-badge cb-pend">${totPend||"—"}</span></td>
-      <td><span class="count-badge cb-emrec">${totER||"—"}</span></td>
-      <td><span class="count-badge cb-rec">${totRec||"—"}</span></td>
-      <td><span class="count-badge cb-fec">${totFec||"—"}</span></td>
-      <td><span class="count-badge cb-fecdiv">${totFDiv||"—"}</span></td>
-      <td><strong>${totPal}</strong> &nbsp;<small style="color:var(--muted)">(${totTotal} ASNs)</small></td>
-    </tr>`;
-  } else {
-    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:20px">✓ Sem backlog nos dias anteriores</td></tr>`;
+  if (!deps.length) {
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:20px">✓ Sem ASNs no mês vigente</td></tr>`;
     tfoot.innerHTML = "";
+    return;
   }
+
+  let totPend=0, totER=0, totRec=0, totFec=0, totFDiv=0, totPal=0, totAsns=0;
+  tbody.innerHTML = deps.map(([dep, info]) => {
+    const st = info.status || {};
+    const pend = (st.pendente||{}).count||0;
+    const er   = (st.no_recebimento||{}).count||0;
+    const rec  = (st.recebido||{}).count||0;
+    const fec  = (st.fechado||{}).count||0;
+    const fdiv = (st.fechado_divergente||{}).count||0;
+    const pal  = info.total_paletes||0;
+    const asns = info.total_asns||0;
+    totPend+=pend; totER+=er; totRec+=rec; totFec+=fec; totFDiv+=fdiv;
+    totPal+=pal; totAsns+=asns;
+    const badge = (n, cls) => n
+      ? `<span class="count-badge cb-${cls}" style="cursor:pointer"
+           onclick="abrirDetalhe('${dep}','${cls==='pend'?'pendente':cls==='er'?'no_recebimento':cls==='rec'?'recebido':cls==='fec'?'fechado':'fechado_divergente'}','backlog')">${n}</span>`
+      : `<span class="count-badge cb-zero">—</span>`;
+    return `<tr>
+      <td class="bl-dep">${info.nome||dep}</td>
+      <td>${badge(pend,'pend')}</td>
+      <td>${badge(er,'er')}</td>
+      <td>${badge(rec,'rec')}</td>
+      <td>${badge(fec,'fec')}</td>
+      <td>${badge(fdiv,'fecdiv')}</td>
+      <td>${pal}</td>
+      <td><strong>${asns}</strong></td>
+    </tr>`;
+  }).join("");
+
+  tfoot.innerHTML = `<tr class="bl-total-row">
+    <td><strong>TOTAL DO MÊS</strong></td>
+    <td><span class="count-badge cb-pend">${totPend||"—"}</span></td>
+    <td><span class="count-badge cb-er">${totER||"—"}</span></td>
+    <td><span class="count-badge cb-rec">${totRec||"—"}</span></td>
+    <td><span class="count-badge cb-fec">${totFec||"—"}</span></td>
+    <td><span class="count-badge cb-fecdiv">${totFDiv||"—"}</span></td>
+    <td><strong>${totPal}</strong></td>
+    <td><strong>${totAsns} ASNs</strong></td>
+  </tr>`;
 }
 
 function countBadge(obj, cls){
