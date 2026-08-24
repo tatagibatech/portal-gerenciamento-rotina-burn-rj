@@ -600,11 +600,35 @@ class ReceiptCollector:
         mes_anterior = (primeiro_dia - timedelta(days=1)).strftime("%Y-%m")
         return {mes_atual, mes_anterior}
 
+    # Cache de dados considerado "antigo/grande" se >5MB — descarta dados,
+    # mantém só as chaves para o mini scan não re-varrer tudo do zero.
+    _MAX_CACHE_BYTES = 5 * 1024 * 1024  # 5 MB
+
     def _load_cache(self):
-        """Carrega dados do disco filtrando só os últimos 2 meses (limita RAM)."""
+        """Carrega dados do disco filtrando só os últimos 2 meses (limita RAM).
+        Se o arquivo for >5MB (backlog histórico antigo), descarta os dados de
+        recebimentos mas preserva as chaves conhecidas para o mini scan."""
         meses = self._meses_retencao()
         # 1. Tenta carregar dados completos
         try:
+            tamanho = os.path.getsize(self.DATA_CACHE_FILE)
+            if tamanho > self._MAX_CACHE_BYTES:
+                # Arquivo grande (backlog histórico): carrega só metadados e chaves,
+                # descarta dados de recebimentos para não estourar RAM (Render free: 512MB).
+                log.warning(
+                    f"Cache muito grande ({tamanho/1024/1024:.1f}MB > 5MB) — "
+                    f"descartando dados históricos, mantendo chaves e max_base."
+                )
+                with open(self.DATA_CACHE_FILE, encoding="utf-8") as f:
+                    data = json.load(f)
+                self._receipts   = {}
+                self._known_keys = set(data.get("keys", []))
+                self._last_max_base = data.get("last_max_base", 0)
+                # Salva versão enxuta imediatamente para próximos restarts
+                threading.Thread(target=self._save_cache, daemon=True).start()
+                log.info(f"Chaves carregadas: {len(self._known_keys)}, max_base={self._last_max_base}.")
+                return
+
             with open(self.DATA_CACHE_FILE, encoding="utf-8") as f:
                 data = json.load(f)
             todos = data.get("receipts", {})
