@@ -1253,12 +1253,12 @@ class ReceiptCollector:
                 self._erro = str(e)
 
     def _background_range_scan(self):
-        """Executa range scan paralelo e busca ASNs novas em paralelo (10 workers)."""
+        """Executa range scan paralelo e busca ASNs novas em paralelo (8 workers)."""
         log.info("Background range scan: início.")
         try:
             with self._lock:
                 known = set(self._known_keys)
-            new_keys = self._discover_from_range_scan(already_discovered=known)
+            new_keys = self._discover_from_range_scan(already_discovered=known, max_workers=8)
             keys_to_fetch = [rk for rk in new_keys if rk not in self._known_keys]
             log.info(f"Background range scan: {len(new_keys)} chaves descobertas, {len(keys_to_fetch)} novas.")
 
