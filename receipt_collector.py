@@ -206,10 +206,12 @@ class WMSClient:
                 pass
         return list(found.values())
 
-    def list_asn_by_type(self, receipttype="8", page_size=500, max_pages=40) -> dict:
+    def list_asn_by_type(self, receipttype="8", page_size=500, max_pages=5) -> dict:
         """
         Lista ASNs por receipttype, com paginação automática.
         Retorna dict: {receiptkey: status_raw_str} para permitir filtragem sem fetch adicional.
+        Timeout curto: este endpoint retorna 405 no WMS BURN. Se eventualmente retornar 200,
+        limita a 5 páginas com 15s timeout para não bloquear o ciclo.
         """
         result = {}   # receiptkey → status (string)
         for offset in range(0, max_pages * page_size, page_size):
@@ -220,7 +222,7 @@ class WMSClient:
                 "startingrecord": offset,
             }
             try:
-                r = self.get("advancedshipnotice", params=params, timeout=120)
+                r = self.get("advancedshipnotice", params=params, timeout=15)
                 if r.status_code != 200:
                     break
                 data = r.json()
@@ -254,7 +256,7 @@ class WMSClient:
                 r = self.get(
                     "advancedshipnotice",
                     params={"storerkey": "BURN", param: date_str, "recordcount": page_size},
-                    timeout=60,
+                    timeout=15,
                 )
                 if r.status_code == 200:
                     data = r.json()
