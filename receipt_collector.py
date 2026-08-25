@@ -1170,9 +1170,10 @@ class ReceiptCollector:
                         if novo_st != old_st:
                             need_fetch.add(rk)
                 # 2. ASNs ATIVAS de hoje ou ontem → re-busca para atualização de status
-                # Status 9/21 com dados completos: re-busca a cada 3 ciclos (~90s)
-                # para capturar transições 9→11 sem sobrecarregar o WMS a cada ciclo.
-                refetch_recebidos = (cycle % 3 == 0)
+                # Status 9/21 com dados completos: re-busca a cada 3 ciclos (~90s).
+                # Ciclo 0 (startup) é excluído: 0 % 3 == 0 causaria re-fetch de TODOS
+                # os receipts históricos, bloqueando o primeiro ciclo por minutos.
+                refetch_recebidos = (cycle > 0 and cycle % 3 == 0)
                 for rk, rec in existing.items():
                     st_raw = rec.get("status_raw", "")
                     if st_raw in self._STATUS_WMS_FECHADO:
