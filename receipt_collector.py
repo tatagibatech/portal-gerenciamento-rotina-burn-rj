@@ -997,7 +997,7 @@ class ReceiptCollector:
     # Status WMS "fechados/cancelados" — não mudam mais, não precisam de re-fetch
     _STATUS_WMS_FECHADO = {"11", "15", "20"}
 
-    def _refresh(self):
+    def _refresh(self, cycle: int = 0):
         """
         Dois modos de operação:
 
@@ -1180,15 +1180,16 @@ class ReceiptCollector:
                         if novo_st != old_st:
                             need_fetch.add(rk)
                 # 2. ASNs ATIVAS de hoje ou ontem → re-busca para atualização de status
-                # Status 9/21 (recebido) com dados completos são estáveis — não re-busca
-                # a cada ciclo para não sobrecarregar o WMS com dezenas de fetches.
+                # Status 9/21 com dados completos: re-busca a cada 3 ciclos (~90s)
+                # para capturar transições 9→11 sem sobrecarregar o WMS a cada ciclo.
+                refetch_recebidos = (cycle % 3 == 0)
                 for rk, rec in existing.items():
                     st_raw = rec.get("status_raw", "")
                     if st_raw in self._STATUS_WMS_FECHADO:
                         continue  # fechada/cancelada — congelada
-                    # Recebida com dados completos: type_map já captura mudanças (1b acima)
                     if st_raw in {"9", "21"} and rec.get("n_linhas", 0) > 0:
-                        continue
+                        if not refetch_recebidos:
+                            continue  # adia para o próximo ciclo múltiplo de 3
                     data_criacao = (rec.get("data_criacao") or "")[:10]
                     data_rec_stored = (rec.get("data_recebimento") or "")[:10]
                     if (data_criacao in (today_str, yesterday_str)
@@ -1300,7 +1301,7 @@ class ReceiptCollector:
             with self._lock:
                 self._cycle_start_ts = datetime.now(_BRT).strftime("%d/%m/%Y %H:%M:%S")
             try:
-                self._refresh()
+                self._refresh(cycle=cycle)
             except Exception as e:
                 log.error(f"_loop: exceção não capturada no _refresh — continuando. {e}")
                 with self._lock:
