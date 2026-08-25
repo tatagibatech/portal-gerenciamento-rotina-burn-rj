@@ -797,13 +797,13 @@ class ReceiptCollector:
             max_base = BASE_MINIMO_2026
 
         if not self._first_scan_done:
-            scan_start = max_base            # parte do máximo conhecido
-            scan_end   = max_base + 500      # cobre ~33 dias à frente (~33s com 20 workers)
+            scan_start = max_base
+            scan_end   = max_base + 3000     # bootstrap: cobre gap de até ~200 dias (~15min com 20 workers)
             self._first_scan_done = True
             log.info(f"Range scan BOOTSTRAP paralelo ({max_workers} workers): bases {scan_start}-{scan_end}")
         else:
             scan_start = max(1, max_base - 300)
-            scan_end   = max_base + 200      # incremental: busca novos além do máximo conhecido
+            scan_end   = max_base + 500      # incremental: busca novos além do máximo conhecido
             log.info(f"Range scan incremental paralelo ({max_workers} workers): bases {scan_start}-{scan_end}")
 
         bases = list(range(scan_end, scan_start - 1, -1))
@@ -1108,10 +1108,8 @@ class ReceiptCollector:
                                 pass
 
                         scan_ini = max(1, max_base - 5)
-                        # Limita a 50 novas bases por ciclo para não bloquear o worker.
-                        # Gap maior é coberto pelo _background_range_scan (thread separada).
-                        alcance_frente = max(50, dias_gap * 10 + 50)
-                        scan_fim = min(max_base + alcance_frente, max_base + 200)
+                        alcance_frente = max(50, dias_gap * 15 + 100)
+                        scan_fim = max_base + alcance_frente  # sem hard cap — cobre gaps grandes
                         bases_novas = [
                             b for b in range(scan_ini, scan_fim)
                             if b not in known_bases
@@ -1304,10 +1302,9 @@ class ReceiptCollector:
                 self._cycle_count = cycle
             # A cada 20 ciclos (~10 min), relança o background range scan para capturar
             # novos sub-keys em bases fora da janela de 2 dias do ciclo rápido.
-            # Ciclo 0 excluído: 0 % 20 == 0 causaria range scan imediato (500 bases, 20
-            # workers) logo no startup, competindo com o primeiro refresh e causando
-            # rate limiting no WMS.
-            if cycle > 0 and cycle % 20 == 0 and not self._range_scan_running:
+            # Ciclo 1: dispara range scan assim que o primeiro ciclo termina para cobrir
+            # gaps grandes (ex: restart sem cache). Depois repete a cada 20 ciclos (~10min).
+            if cycle > 0 and (cycle == 1 or cycle % 20 == 0) and not self._range_scan_running:
                 self._range_scan_running = True
                 threading.Thread(
                     target=self._background_range_scan, daemon=True, name="range-scan"
