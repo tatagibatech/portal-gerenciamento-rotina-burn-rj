@@ -1302,7 +1302,10 @@ class ReceiptCollector:
                 self._cycle_count = cycle
             # A cada 20 ciclos (~10 min), relança o background range scan para capturar
             # novos sub-keys em bases fora da janela de 2 dias do ciclo rápido.
-            if cycle % 20 == 0 and not self._range_scan_running:
+            # Ciclo 0 excluído: 0 % 20 == 0 causaria range scan imediato (500 bases, 20
+            # workers) logo no startup, competindo com o primeiro refresh e causando
+            # rate limiting no WMS.
+            if cycle > 0 and cycle % 20 == 0 and not self._range_scan_running:
                 self._range_scan_running = True
                 threading.Thread(
                     target=self._background_range_scan, daemon=True, name="range-scan"

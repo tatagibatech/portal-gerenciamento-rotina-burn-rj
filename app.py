@@ -516,9 +516,11 @@ def api_stream():
     """SSE — empurra evento para o browser sempre que o coletor atualiza dados."""
     def _generate():
         last_ts = None
-        # keepalive: comenta vazia a cada 15s para não quebrar proxies/Render
         idle = 0
-        while True:
+        # Limite de 5 min por conexão: libera a thread gthread.
+        # O EventSource do browser reconecta automaticamente.
+        deadline = time.time() + 300
+        while time.time() < deadline:
             state = collector.get_state()
             ts = state.get("ultima_atualizacao") or ""
             if ts != last_ts:
