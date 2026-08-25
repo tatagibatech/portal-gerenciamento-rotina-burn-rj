@@ -587,6 +587,8 @@ class ReceiptCollector:
         self._range_scan_done    = False
         self._farol_cache: dict | None = None   # resultado pré-computado de get_farol()
         self._fetch_queue: set = set()          # keys enfileiradas via queue_fetch (não-bloqueante)
+        self._cycle_count    = 0                # número de ciclos completados
+        self._cycle_start_ts: str | None = None # timestamp de início do ciclo atual
         self._load_cache()
 
     # ------------------------------------------------------------------ cache
@@ -885,27 +887,39 @@ class ReceiptCollector:
         """
         Busca em cada STG.PA.* por itens com lottable01 contendo receiptkey.
         Retorna set de keys descobertas.
+        Executa em paralelo para não bloquear o ciclo por vários segundos.
         """
-        keys = set()
         all_stages = []
         for dep_info in DEPOSITOS.values():
             all_stages.extend(dep_info.get("stages", []))
 
-        for loc in all_stages:
-            try:
-                items = self._client.get_inventory_stage(loc)
-                for item in items:
-                    # lottable01 geralmente contém receiptkey ou referência
-                    lt1 = item.get("lottable01") or ""
-                    if lt1 and lt1.strip():
-                        keys.add(lt1.strip())
-                    # Também tentar o campo lot
-                    lt = item.get("lot") or ""
-                    if lt and lt.strip():
-                        keys.add(lt.strip())
-            except Exception as e:
-                log.warning(f"Erro ao buscar stage {loc}: {e}")
+        if not all_stages:
+            return set()
 
+        def _fetch_stage(loc):
+            keys_loc = set()
+            try:
+                r = self._client.post(
+                    "inventorybalance/showinventorybalancelist",
+                    params={"recordcount": 500, "loc": loc, "owner": "BURN"},
+                    timeout=10,
+                )
+                if r.status_code == 200 and isinstance(r.json(), list):
+                    for item in r.json():
+                        lt1 = (item.get("lottable01") or "").strip()
+                        if lt1:
+                            keys_loc.add(lt1)
+                        lt = (item.get("lot") or "").strip()
+                        if lt:
+                            keys_loc.add(lt)
+            except Exception as e:
+                log.debug(f"Stage {loc}: {e}")
+            return keys_loc
+
+        keys: set = set()
+        with ThreadPoolExecutor(max_workers=len(all_stages)) as ex:
+            for partial in ex.map(_fetch_stage, all_stages):
+                keys.update(partial)
         return keys
 
     # ------------------------------------------------------------------ mini range scan
@@ -1283,6 +1297,8 @@ class ReceiptCollector:
     def _loop(self):
         cycle = 0
         while self._running:
+            with self._lock:
+                self._cycle_start_ts = datetime.now(_BRT).strftime("%d/%m/%Y %H:%M:%S")
             try:
                 self._refresh()
             except Exception as e:
@@ -1290,6 +1306,8 @@ class ReceiptCollector:
                 with self._lock:
                     self._erro = str(e)
             cycle += 1
+            with self._lock:
+                self._cycle_count = cycle
             # A cada 20 ciclos (~10 min), relança o background range scan para capturar
             # novos sub-keys em bases fora da janela de 2 dias do ciclo rápido.
             if cycle % 20 == 0 and not self._range_scan_running:
@@ -1381,6 +1399,9 @@ class ReceiptCollector:
                 "receipts":            dict(self._receipts),
                 "ultima_atualizacao":  self._ultima_atualizacao,
                 "erro":                self._erro,
+                "cycle_count":         self._cycle_count,
+                "cycle_start_ts":      self._cycle_start_ts,
+                "thread_alive":        (self._thread is not None and self._thread.is_alive()),
             }
 
     # ------------------------------------------------------------------ farol summary

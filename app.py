@@ -505,6 +505,9 @@ def api_status():
         "total_receipts":      len(state["receipts"]),
         "erro":                state["erro"],
         "server_time":         datetime.now(_BRT).strftime("%d/%m/%Y %H:%M:%S"),
+        "cycle_count":         state.get("cycle_count", 0),
+        "cycle_start_ts":      state.get("cycle_start_ts"),
+        "thread_alive":        state.get("thread_alive", False),
     })
 
 
