@@ -917,7 +917,7 @@ class ReceiptCollector:
             return keys_loc
 
         keys: set = set()
-        with ThreadPoolExecutor(max_workers=len(all_stages)) as ex:
+        with ThreadPoolExecutor(max_workers=min(6, len(all_stages))) as ex:
             for partial in ex.map(_fetch_stage, all_stages):
                 keys.update(partial)
         return keys
@@ -1076,14 +1076,9 @@ class ReceiptCollector:
                         type_map  = {k: "" for k in keys_scan}
                         log.info(f"Base scan fallback: {len(type_map)} chaves encontradas.")
                 else:
-                    # Incremental: stages + query por data + mini range scan de novas bases tipo 8
-                    keys_stages    = self._discover_from_stages()
-                    new_via_stages = keys_stages - set(existing.keys())
-                    type_map       = {k: "" for k in new_via_stages}
-
-                    # Mini range scan: detecta ASNs recém-criadas (incluindo status 0/novo).
-                    # Sonda apenas bases ainda não indexadas além do máximo conhecido.
-                    # ~20 bases × 10 workers × 200ms latência ≈ 400ms por ciclo.
+                    # Incremental: mini range scan de novas bases + bases recentes.
+                    # Stages removido do ciclo rápido (redundante com o mini scan e
+                    # adiciona 10s+ de latência por ciclo no Render free tier).
                     with self._lock:
                         known = set(self._known_keys)
                     known_bases = {
@@ -1109,24 +1104,18 @@ class ReceiptCollector:
                                             datetime.strptime(data_max_base, "%Y-%m-%d").date()).days
                             except Exception:
                                 pass
-                        # ~15 bases por dia de gap; mínimo 100 para cobertura rápida.
-                        # Scan mais amplo (500+) é feito pelo _background_range_scan
-                        # em thread separada para não bloquear o ciclo de 30s.
-                        alcance_frente = max(100, dias_gap * 20 + 100)
-                        if dias_gap > 1:
-                            log.info(f"Gap detectado: {dias_gap} dias sem dados. "
-                                     f"Expandindo scan para +{alcance_frente} bases.")
 
                         scan_ini = max(1, max_base - 5)
-                        scan_fim = max_base + alcance_frente
+                        # Limita a 50 novas bases por ciclo para não bloquear o worker.
+                        # Gap maior é coberto pelo _background_range_scan (thread separada).
+                        alcance_frente = max(50, dias_gap * 10 + 50)
+                        scan_fim = min(max_base + alcance_frente, max_base + 200)
                         bases_novas = [
                             b for b in range(scan_ini, scan_fim)
                             if b not in known_bases
-                        ]
-                        # Bases recentes já conhecidas: re-sonda para capturar
-                        # sub-keys criados hoje em bases já indexadas (ex: 77339.11)
-                        # Usa janela de 2 dias (hoje + ontem) → max ~30 bases no ciclo rápido.
-                        # Janela mais ampla (14 dias) é feita pelo _background_range_scan.
+                        ][:50]  # hard cap: max 50 novas bases por ciclo
+
+                        # Bases recentes já conhecidas: re-sonda sub-keys novos (ex: 77339.11)
                         cutoff_rapido = (
                             datetime.now(_BRT).date() - timedelta(days=2)
                         ).isoformat()
@@ -1137,13 +1126,14 @@ class ReceiptCollector:
                             and rk.split(".")[0].isdigit()
                             and (rec.get("data_criacao") or "")[:10] >= cutoff_rapido
                         }
-                        # Fallback: 30 maiores por número (cobre bases sem data)
-                        bases_por_num = set(sorted(known_bases)[-30:])
-                        bases_recentes = sorted(bases_por_data | bases_por_num)
+                        # Fallback: 20 maiores por número (cobre bases sem data)
+                        bases_por_num = set(sorted(known_bases)[-20:])
+                        bases_recentes = sorted(bases_por_data | bases_por_num)[:30]
                         scan_list = bases_novas + bases_recentes
                         if scan_list:
+                            # 8 workers, timeout 2s: max ~(50+30)/8 × 2s = 20s por ciclo
                             scan_result = self._scan_bases_quick(
-                                scan_list, max_workers=15, timeout=3
+                                scan_list, max_workers=8, timeout=2
                             )
                             novel = scan_result - set(existing.keys())
                             if novel:
@@ -1225,7 +1215,7 @@ class ReceiptCollector:
                     log.warning(f"Erro ao buscar {rk}: {e}")
                 return rk, None
 
-            with ThreadPoolExecutor(max_workers=10) as ex:
+            with ThreadPoolExecutor(max_workers=5) as ex:
                 futures = {ex.submit(_fetch_one, rk): rk for rk in need_fetch}
                 for fut in as_completed(futures):
                     rk, rec = fut.result()
