@@ -20,6 +20,7 @@ from flask_cors import CORS
 from receipt_collector import ReceiptCollector, DEPOSITOS, STATUS_ORDER
 
 _BRT = timezone(timedelta(hours=-3))
+_DATA_DIR = "/var/data" if os.path.isdir("/var/data") else os.path.dirname(__file__)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -38,10 +39,13 @@ collector = ReceiptCollector(intervalo=POLL_INTERVALO)
 
 
 def _self_ping():
-    """Faz GET no próprio /api/status a cada 10 min para evitar hibernação do Render."""
-    # Aguarda 2 min para o app subir completamente antes do primeiro ping
+    """Faz GET no próprio /api/status a cada 4 min (mantém Render acordado; no-op no Fly.io)."""
     time.sleep(120)
-    host = os.environ.get("RENDER_EXTERNAL_URL", "http://localhost:5002")
+    host = (
+        os.environ.get("RENDER_EXTERNAL_URL")
+        or (f"https://{os.environ['FLY_APP_NAME']}.fly.dev" if os.environ.get("FLY_APP_NAME") else None)
+        or f"http://localhost:{os.environ.get('PORT', '5002')}"
+    )
     url  = f"{host}/api/status"
     while True:
         try:
@@ -801,10 +805,9 @@ _pending_abrir      = None   # timestamp do comando "abrir inventário" aguardan
 _pending_finalizar  = None   # timestamp do comando "finalizar inventário" aguardando execução local
 _inventario_final   = {}     # dados do relatório final (pdf gerado, timestamp)
 
-# Arquivo de persistência de pending (sobrevive a restarts de dyno no Render)
-_PENDING_FILE = os.path.join(os.path.dirname(__file__), "pending_inv.json")
-# Cache do painel ERP×WMS em disco — sobrevive a restarts do dyno Render
-_PAINEL_CACHE_FILE = os.path.join(os.path.dirname(__file__), "painel_dados_cache.json")
+# Arquivos de persistência — usam /var/data (volume persistente no Fly.io/Render)
+_PENDING_FILE      = os.path.join(_DATA_DIR, "pending_inv.json")
+_PAINEL_CACHE_FILE = os.path.join(_DATA_DIR, "painel_dados_cache.json")
 
 
 def _painel_save():

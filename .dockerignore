@@ -1,0 +1,17 @@
+.git/
+__pycache__/
+*.pyc
+*.json
+*.xlsx
+*.bat
+diag*.py
+carga*.py
+alimentar_hoje.py
+relatorio_*.py
+test_api.py
+flask_log.txt
+*.log
+config.py
+render.yaml
+iniciar.bat
+_keys_abertas.txt
